@@ -1,0 +1,507 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>量化分析平台</title>
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lightweight-charts@4.1.1/dist/lightweight-charts.standalone.production.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/tsparticles-confetti@2.12.0/tsparticles.confetti.bundle.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/tsparticles@2.12.0/tsparticles.bundle.min.js"></script>
+    <style>
+        body { margin: 0; overflow-x: hidden; background-color: #1a202c; color: white; }
+        .chart-container { width: 100%; height: 500px; position: relative; }
+        .section { min-height: 100vh; padding: 2rem; display: flex; flex-direction: column; justify-content: center; }
+        .fade-enter-active, .fade-leave-active { transition: opacity 0.5s; }
+        .fade-enter-from, .fade-leave-to { opacity: 0; }
+        #particles-js { position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: -1; }
+        
+        /* Dashboard Styles */
+        .dashboard-card { background: rgba(31, 41, 55, 0.7); backdrop-filter: blur(10px); border: 1px solid rgba(75, 85, 99, 0.4); }
+        .grid-line-label { font-size: 0.75rem; color: #9ca3af; }
+    </style>
+</head>
+<body>
+    <div id="app">
+        <!-- Particles Background -->
+        <div id="particles-js"></div>
+
+        <!-- Header -->
+        <nav class="fixed top-0 w-full bg-gray-900 bg-opacity-80 backdrop-blur-md z-50 p-4 border-b border-gray-700">
+            <div class="container mx-auto flex justify-between items-center">
+                <h1 class="text-2xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-blue-400 to-purple-500">
+                    QuantVisual Monitor
+                </h1>
+                <div class="space-x-4">
+                    <button @click="scrollTo('market')" class="hover:text-blue-400 transition">市场行情</button>
+                    <button @click="scrollTo('analysis')" class="hover:text-blue-400 transition">量化监控</button>
+                    <button @click="scrollTo('settings')" class="hover:text-blue-400 transition">通知设置</button>
+                </div>
+            </div>
+        </nav>
+
+        <!-- Market Section -->
+        <section id="market" class="section pt-20">
+            <div class="container mx-auto">
+                <div class="flex justify-between items-center mb-8">
+                    <h2 class="text-4xl font-bold">实时市场监控</h2>
+                    <div class="text-right">
+                         <span class="inline-block w-3 h-3 rounded-full bg-green-500 animate-pulse mr-2"></span>
+                         <span class="text-gray-400 text-sm">数据实时同步中</span>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 lg:grid-cols-4 gap-6">
+                    <!-- Sidebar Dashboard -->
+                    <div class="lg:col-span-1 space-y-4">
+                        <div class="dashboard-card rounded-lg p-4">
+                            <h3 class="text-lg font-bold mb-4 text-blue-400">关注列表</h3>
+                            <div class="space-y-2">
+                                <div v-for="item in watchList" :key="item.symbol" 
+                                     @click="fetchData(item.symbol)"
+                                     :class="['p-3 rounded cursor-pointer transition flex justify-between items-center', currentSymbol === item.symbol ? 'bg-blue-600' : 'bg-gray-800 hover:bg-gray-700']">
+                                    <div>
+                                        <div class="font-bold">{{ item.name }}</div>
+                                        <div class="text-xs text-gray-400">{{ item.symbol }}</div>
+                                    </div>
+                                    <div :class="item.change >= 0 ? 'text-green-400' : 'text-red-400'">
+                                        {{ item.price }}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="dashboard-card rounded-lg p-4">
+                            <h3 class="text-lg font-bold mb-4 text-purple-400">账户概览 (模拟)</h3>
+                            <div class="flex justify-between mb-2">
+                                <span class="text-gray-400">总资产</span>
+                                <span class="font-mono font-bold">¥{{ account.total.toLocaleString() }}</span>
+                            </div>
+                            <div class="flex justify-between mb-2">
+                                <span class="text-gray-400">可用现金</span>
+                                <span class="font-mono">¥{{ account.cash.toLocaleString() }}</span>
+                            </div>
+                            <div class="flex justify-between">
+                                <span class="text-gray-400">持仓盈亏</span>
+                                <span :class="account.pnl >= 0 ? 'text-green-400' : 'text-red-400'">
+                                    {{ account.pnl > 0 ? '+' : '' }}{{ account.pnl }}%
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Main Chart -->
+                    <div class="lg:col-span-3">
+                        <div class="bg-gray-800 rounded-lg p-4 shadow-lg border border-gray-700 h-full flex flex-col">
+                            <!-- Search & Market Selection -->
+                            <div class="flex flex-wrap gap-2 mb-4 px-2">
+                                <select v-model="marketType" class="bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white outline-none focus:border-blue-500">
+                                    <option value="CN">A股 (CN)</option>
+                                    <option value="HK">港股 (HK)</option>
+                                    <option value="US">美股 (US)</option>
+                                </select>
+                                <div class="flex-grow flex">
+                                    <input v-model="searchInput" @keyup.enter="handleSearch" type="text" placeholder="输入代码 (如 000001, 0700, AAPL)" class="flex-grow bg-gray-700 border border-gray-600 rounded-l px-3 py-2 text-white outline-none focus:border-blue-500">
+                                    <button @click="handleSearch" class="bg-blue-600 px-4 rounded-r hover:bg-blue-700 transition">查询</button>
+                                </div>
+                            </div>
+
+                            <div class="flex justify-between items-center mb-2 px-2">
+                                <div class="flex items-center gap-2">
+                                    <div class="text-xl font-bold">{{ currentSymbol }}</div>
+                                    <button @click="toggleWatchlist" :class="isInWatchlist ? 'text-yellow-400' : 'text-gray-500'" class="hover:text-yellow-300 transition text-xl">
+                                        ★
+                                    </button>
+                                </div>
+                                <div class="text-2xl font-mono" :class="currentPrice >= lastPrice ? 'text-green-400' : 'text-red-400'">
+                                    {{ currentPrice.toFixed(2) }}
+                                    <span class="text-sm ml-2">{{ ((currentPrice - lastPrice)/lastPrice * 100).toFixed(2) }}%</span>
+                                </div>
+                            </div>
+                            <div ref="chartContainer" class="chart-container flex-grow"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Analysis Section -->
+        <section id="analysis" class="section bg-gray-900 bg-opacity-50">
+            <div class="container mx-auto">
+                <h2 class="text-4xl font-bold mb-8 text-center">网格交易监控中心</h2>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
+                    <!-- Strategy Status -->
+                    <div class="bg-gray-800 p-6 rounded-lg border border-gray-700">
+                        <div class="flex justify-between items-center mb-4">
+                            <h3 class="text-xl font-bold text-green-400">策略运行状态</h3>
+                            <span v-if="isRunning" class="px-2 py-1 bg-green-900 text-green-300 text-xs rounded border border-green-700">运行中</span>
+                            <span v-else class="px-2 py-1 bg-gray-700 text-gray-300 text-xs rounded">已停止</span>
+                        </div>
+                        
+                        <!-- Grid Visualization Bar -->
+                        <div class="mb-6 relative h-12 bg-gray-700 rounded-full overflow-hidden flex items-center">
+                            <!-- Progress bar indicating price position within grid -->
+                            <div class="absolute h-full bg-gradient-to-r from-blue-600 to-purple-600 opacity-50 transition-all duration-1000"
+                                 :style="{ width: gridProgress + '%' }"></div>
+                            
+                            <!-- Markers for grid lines -->
+                            <div class="absolute w-full flex justify-between px-4 z-10">
+                                <span class="text-xs text-gray-300">{{ gridLower }}</span>
+                                <span class="text-xs font-bold text-white drop-shadow-md">
+                                    当前: {{ currentPrice.toFixed(2) }}
+                                </span>
+                                <span class="text-xs text-gray-300">{{ gridUpper }}</span>
+                            </div>
+                        </div>
+
+                        <div class="grid grid-cols-2 gap-4 mb-4">
+                             <div class="bg-gray-900 p-3 rounded">
+                                 <div class="text-xs text-gray-500">网格数量</div>
+                                 <div class="font-mono text-lg">5</div>
+                             </div>
+                             <div class="bg-gray-900 p-3 rounded">
+                                 <div class="text-xs text-gray-500">触发次数</div>
+                                 <div class="font-mono text-lg">{{ logs.filter(l => l.message.includes('Near')).length }}</div>
+                             </div>
+                        </div>
+
+                        <div class="mt-4 p-4 bg-gray-900 rounded font-mono text-sm h-48 overflow-y-auto border border-gray-700">
+                            <div v-for="(log, index) in logs" :key="index" class="mb-1 border-b border-gray-800 pb-1 last:border-0">
+                                <span class="text-gray-500 text-xs">[{{ log.time }}]</span> 
+                                <span :class="log.message.includes('Near') ? 'text-yellow-400' : 'text-gray-300'">{{ log.message }}</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Strategy Config -->
+                    <div class="bg-gray-800 p-6 rounded-lg border border-gray-700">
+                        <h3 class="text-xl font-bold mb-4 text-purple-400">参数配置</h3>
+                        <div class="space-y-4">
+                            <div>
+                                <label class="block text-sm text-gray-400 mb-1">网格上界 (Upper Limit)</label>
+                                <input v-model="gridUpper" type="number" class="w-full bg-gray-700 border border-gray-600 rounded p-2 text-white focus:border-blue-500 outline-none transition">
+                            </div>
+                            <div>
+                                <label class="block text-sm text-gray-400 mb-1">网格下界 (Lower Limit)</label>
+                                <input v-model="gridLower" type="number" class="w-full bg-gray-700 border border-gray-600 rounded p-2 text-white focus:border-blue-500 outline-none transition">
+                            </div>
+                            <button @click="startStrategy" 
+                                    :class="['w-full py-3 rounded transition font-bold shadow-lg transform active:scale-95', isRunning ? 'bg-red-600 hover:bg-red-700' : 'bg-green-600 hover:bg-green-700']">
+                                {{ isRunning ? '停止策略 (Stop Strategy)' : '启动监控策略 (Start Monitoring)' }}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Settings Section -->
+        <section id="settings" class="section">
+            <div class="container mx-auto max-w-2xl">
+                <h2 class="text-4xl font-bold mb-8 text-center">通知设置</h2>
+                <div class="bg-gray-800 p-8 rounded-lg border border-gray-700">
+                    <div class="mb-6">
+                        <label class="block text-lg mb-2">微信推送 (UID)</label>
+                        <input v-model="wxUid" type="text" placeholder="输入你的微信推送UID (如WxPusher)" class="w-full bg-gray-700 border border-gray-600 rounded p-3 text-white">
+                        <p class="text-sm text-gray-500 mt-2">当触发交易信号时，系统将发送消息到此微信。</p>
+                    </div>
+                    <button @click="saveSettings" class="w-full py-3 bg-indigo-600 rounded hover:bg-indigo-700 transition font-bold">保存设置</button>
+                </div>
+            </div>
+        </section>
+    </div>
+
+    <script>
+        const { createApp, ref, onMounted, shallowRef, computed, onUnmounted } = Vue;
+
+        createApp({
+            setup() {
+                const chartContainer = ref(null);
+                const chart = shallowRef(null);
+                const candlestickSeries = shallowRef(null);
+                const priceLines = ref([]); // Store grid lines
+                const currentSymbol = ref('000001.SZ');
+                const currentPrice = ref(0.00);
+                const lastPrice = ref(0.00); // For calculating change
+                const gridUpper = ref(20.00);
+                const gridLower = ref(10.00);
+                const isRunning = ref(false);
+                const logs = ref([]);
+                const wxUid = ref('');
+                
+                // Search & Watchlist
+                const marketType = ref('CN');
+                const searchInput = ref('');
+                const watchList = ref([]); // Dynamic
+                
+                const account = ref({
+                    total: 100000,
+                    cash: 50000,
+                    pnl: 5.2
+                });
+
+                const isInWatchlist = computed(() => {
+                    return watchList.value.some(item => item.symbol === currentSymbol.value);
+                });
+
+                const gridProgress = computed(() => {
+                    const range = gridUpper.value - gridLower.value;
+                    if (range <= 0) return 0;
+                    const progress = ((currentPrice.value - gridLower.value) / range) * 100;
+                    return Math.min(Math.max(progress, 0), 100);
+                });
+
+                let pollInterval = null;
+
+                const addLog = (msg) => {
+                    const time = new Date().toLocaleTimeString();
+                    logs.value.unshift({ time, message: msg });
+                };
+
+                const fetchWatchlist = async () => {
+                    try {
+                        const controller = new AbortController();
+                        const timeoutId = setTimeout(() => controller.abort(), 5000); // 5s timeout
+                        
+                        const res = await fetch('/api/watchlist', { signal: controller.signal });
+                        clearTimeout(timeoutId);
+                        
+                        if (!res.ok) throw new Error("Watchlist fetch failed");
+                        
+                        const data = await res.json();
+                        watchList.value = data.map(d => ({
+                            name: d.symbol, 
+                            symbol: d.symbol,
+                            price: d.price.toFixed(2),
+                            change: d.change_pct
+                        }));
+                    } catch(e) {
+                        console.error("Watchlist fetch error", e);
+                    }
+                };
+
+                const handleSearch = () => {
+                    let symbol = searchInput.value.trim();
+                    if (!symbol) return;
+                    
+                    if (marketType.value === 'CN') {
+                        // Auto-suffix for A-shares
+                        if (/^\d{6}$/.test(symbol)) {
+                            if (symbol.startsWith('6')) symbol += '.SS';
+                            else symbol += '.SZ'; // Default to SZ for 0/3
+                        }
+                    } else if (marketType.value === 'HK') {
+                        if (/^\d+$/.test(symbol)) {
+                             while(symbol.length < 4) symbol = '0' + symbol;
+                             symbol += '.HK';
+                        }
+                    } else if (marketType.value === 'US') {
+                        symbol = symbol.toUpperCase();
+                    }
+                    
+                    fetchData(symbol);
+                    searchInput.value = '';
+                };
+
+                const toggleWatchlist = async () => {
+                    const symbol = currentSymbol.value;
+                    if (isInWatchlist.value) {
+                        await fetch(`/api/watchlist/${symbol}`, { method: 'DELETE' });
+                    } else {
+                        await fetch('/api/watchlist', { 
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ symbol })
+                        });
+                    }
+                    fetchWatchlist();
+                };
+
+                const initChart = () => {
+                    if (!chartContainer.value) return;
+                    
+                    if (typeof LightweightCharts === 'undefined') {
+                        addLog("图表库加载失败，请刷新");
+                        return;
+                    }
+
+                    try {
+                        chart.value = LightweightCharts.createChart(chartContainer.value, {
+                            layout: { background: { type: 'solid', color: '#1f2937' }, textColor: '#d1d5db' },
+                            grid: { vertLines: { color: '#374151' }, horzLines: { color: '#374151' } },
+                            width: chartContainer.value.clientWidth,
+                            height: chartContainer.value.clientHeight, // Use container height
+                            timeScale: { timeVisible: true, secondsVisible: false },
+                        });
+                        candlestickSeries.value = chart.value.addCandlestickSeries({
+                            upColor: '#26a69a', downColor: '#ef5350', borderVisible: false, wickUpColor: '#26a69a', wickDownColor: '#ef5350',
+                        });
+                        
+                        // Initial fetch
+                        fetchData('000001.SZ');
+                        fetchWatchlist();
+                    } catch (e) {
+                        console.error("Chart init error", e);
+                    }
+                };
+                
+                // Draw Grid Lines on Chart
+                const updateGridLines = () => {
+                    if (!candlestickSeries.value || !isRunning.value) {
+                         // Clear lines if not running
+                         priceLines.value.forEach(line => candlestickSeries.value.removePriceLine(line));
+                         priceLines.value = [];
+                         return;
+                    }
+                    
+                    // Clear existing
+                    priceLines.value.forEach(line => candlestickSeries.value.removePriceLine(line));
+                    priceLines.value = [];
+                    
+                    // Add new lines
+                    const step = (gridUpper.value - gridLower.value) / 5;
+                    for (let i = 0; i <= 5; i++) {
+                        const price = parseFloat(gridLower.value) + i * step;
+                        const line = candlestickSeries.value.createPriceLine({
+                            price: price,
+                            color: '#3b82f6',
+                            lineWidth: 1,
+                            lineStyle: LightweightCharts.LineStyle.Dotted,
+                            axisLabelVisible: true,
+                            title: `Grid ${i}`,
+                        });
+                        priceLines.value.push(line);
+                    }
+                };
+
+                const fetchData = async (symbol) => {
+                    if (!candlestickSeries.value) return;
+                    currentSymbol.value = symbol;
+                    try {
+                        const response = await fetch(`/api/kline?symbol=${symbol}`);
+                        if (!response.ok) throw new Error('Network err');
+                        const data = await response.json();
+                        data.sort((a, b) => a.time - b.time);
+                        candlestickSeries.value.setData(data);
+                        if (data.length > 0) {
+                            lastPrice.value = currentPrice.value || data[data.length - 1].close;
+                            currentPrice.value = data[data.length - 1].close;
+                        }
+                        addLog(`已加载 ${symbol}`);
+                        
+                        // Update watchlist item price (mock update)
+                        const item = watchList.value.find(i => i.symbol === symbol);
+                        if(item) item.price = currentPrice.value.toFixed(2);
+                        
+                    } catch (error) {
+                        console.error('Fetch error:', error);
+                        // Fallback mock
+                        const data = generateData();
+                        candlestickSeries.value.setData(data);
+                        currentPrice.value = data[data.length - 1].close;
+                    }
+                };
+
+                const generateData = () => {
+                    const data = [];
+                    let time = new Date("2023-01-01").getTime() / 1000;
+                    let value = 15;
+                    for (let i = 0; i < 100; i++) {
+                        const open = value;
+                        const close = value + (Math.random() - 0.5) * 2;
+                        const high = Math.max(open, close) + Math.random();
+                        const low = Math.min(open, close) - Math.random();
+                        data.push({ time: time + i * 86400, open, high, low, close });
+                        value = close;
+                    }
+                    return data;
+                };
+
+                const scrollTo = (id) => {
+                    document.getElementById(id).scrollIntoView({ behavior: 'smooth' });
+                };
+
+                const startStrategy = async () => {
+                    if (isRunning.value) {
+                        isRunning.value = false;
+                        updateGridLines(); // Clear lines
+                        addLog('策略已停止');
+                        return;
+                    }
+
+                    try {
+                        const response = await fetch('/api/strategy/start', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                symbol: currentSymbol.value,
+                                upper: parseFloat(gridUpper.value),
+                                lower: parseFloat(gridLower.value),
+                                uid: wxUid.value || 'test_user'
+                            })
+                        });
+                        
+                        const result = await response.json();
+                        if (result.status === 'success') {
+                            isRunning.value = true;
+                            addLog(`策略已启动 (ID: ${result.strategy_id})`);
+                            updateGridLines(); // Draw lines
+                            confetti({ particleCount: 100, spread: 70, origin: { y: 0.6 } });
+                        }
+                    } catch (error) {
+                        addLog(`启动错误: ${error.message}`);
+                    }
+                };
+                
+                // Polling for status
+                const pollStatus = async () => {
+                    if(!isRunning.value) return;
+                    try {
+                        const res = await fetch('/api/strategies');
+                        const strategies = await res.json();
+                        // Find current strategy
+                        const myStrategy = strategies.find(s => s.symbol === currentSymbol.value);
+                        if(myStrategy) {
+                             // Update price from strategy engine if available
+                             if(myStrategy.current_price) {
+                                 lastPrice.value = currentPrice.value;
+                                 currentPrice.value = myStrategy.current_price;
+                             }
+                        }
+                    } catch(e) { console.error("Poll error", e); }
+                };
+
+                const saveSettings = () => {
+                    alert('设置已保存 (本地演示)');
+                    addLog(`微信推送UID已更新: ${wxUid.value}`);
+                };
+
+                onMounted(() => {
+                    initChart();
+                    window.addEventListener('resize', () => {
+                        if (chart.value && chartContainer.value) {
+                            chart.value.applyOptions({ width: chartContainer.value.clientWidth, height: chartContainer.value.clientHeight });
+                        }
+                    });
+                    
+                    // Start polling
+                    pollInterval = setInterval(pollStatus, 5000);
+                });
+                
+                onUnmounted(() => {
+                    if(pollInterval) clearInterval(pollInterval);
+                });
+
+                return {
+                    chartContainer, fetchData, currentSymbol, currentPrice, lastPrice,
+                    gridUpper, gridLower, isRunning, logs, wxUid, 
+                    scrollTo, startStrategy, saveSettings,
+                    watchList, account, gridProgress,
+                    marketType, searchInput, handleSearch, toggleWatchlist, isInWatchlist
+                };
+            }
+        }).mount('#app');
+    </script>
+</body>
+</html>

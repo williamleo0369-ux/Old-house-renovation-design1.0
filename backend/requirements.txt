@@ -1,0 +1,10 @@
+fastapi
+uvicorn
+pandas
+numpy
+apscheduler
+requests
+akshare
+yfinance
+jinja2
+python-multipart

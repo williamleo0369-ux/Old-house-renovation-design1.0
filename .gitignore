@@ -1,0 +1,17 @@
+# Ignore Python build/runtime files
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+.env
+.venv/
+
+# Ignore system files
+.DS_Store
+Thumbs.db
+
+# Ignore user data
+watchlist.json

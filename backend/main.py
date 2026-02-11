@@ -1,0 +1,170 @@
+from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
+from pydantic import BaseModel
+import uvicorn
+import os
+import json
+import random
+import yfinance as yf
+from scheduler import start_scheduler, add_strategy, get_all_strategies_status
+
+app = FastAPI(title="Quant Analysis API")
+
+# Start Scheduler
+start_scheduler()
+
+# Watchlist Management
+WATCHLIST_FILE = "watchlist.json"
+
+def load_watchlist_file():
+    if os.path.exists(WATCHLIST_FILE):
+        try:
+            with open(WATCHLIST_FILE, "r") as f:
+                return json.load(f)
+        except:
+            return []
+    return []
+
+def save_watchlist_file(watchlist):
+    with open(WATCHLIST_FILE, "w") as f:
+        json.dump(watchlist, f)
+
+class StrategyRequest(BaseModel):
+    symbol: str
+    upper: float
+    lower: float
+    uid: str
+
+class WatchlistRequest(BaseModel):
+    symbol: str
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Allow all origins for development
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# Mount static files
+app.mount("/static", StaticFiles(directory="static"), name="static")
+
+@app.get("/api/watchlist")
+def get_watchlist():
+    symbols = load_watchlist_file()
+    data = []
+    for sym in symbols:
+        try:
+            # Simple caching could be added here
+            t = yf.Ticker(sym)
+            # Use fast_info for speed
+            info = t.fast_info
+            price = info.last_price
+            prev_close = info.previous_close
+            change = ((price - prev_close) / prev_close) * 100 if prev_close else 0
+            
+            data.append({
+                "symbol": sym,
+                "price": round(price, 2),
+                "change_pct": round(change, 2)
+            })
+        except Exception:
+             # Fallback if fetch fails
+             # Generate a somewhat realistic mock price based on hash of symbol
+             seed = sum(ord(c) for c in sym)
+             random.seed(seed)
+             base = 100 + random.uniform(-50, 50)
+             price = base + random.uniform(-2, 2)
+             change = random.uniform(-2, 2)
+             
+             data.append({
+                 "symbol": sym, 
+                 "price": round(price, 2), 
+                 "change_pct": round(change, 2)
+             })
+    return data
+
+@app.post("/api/watchlist")
+def add_to_watchlist(req: WatchlistRequest):
+    current = load_watchlist_file()
+    if req.symbol not in current:
+        current.append(req.symbol)
+        save_watchlist_file(current)
+    return {"status": "success", "watchlist": current}
+
+@app.delete("/api/watchlist/{symbol}")
+def remove_from_watchlist(symbol: str):
+    current = load_watchlist_file()
+    if symbol in current:
+        current.remove(symbol)
+        save_watchlist_file(current)
+    return {"status": "success", "watchlist": current}
+
+@app.get("/")
+def read_root():
+    return FileResponse("static/index.html")
+
+@app.get("/api/health")
+def health_check():
+    return {"status": "ok"}
+
+@app.get("/api/kline")
+def get_kline(symbol: str = "000001.SZ", period: str = "1mo", interval: str = "1d"):
+    try:
+        # Map some common suffixes if needed or just pass through
+        ticker = yf.Ticker(symbol)
+        hist = ticker.history(period=period, interval=interval)
+        
+        if hist.empty:
+             raise ValueError("Empty data returned")
+
+        # Format for lightweight-charts
+        # time, open, high, low, close
+        data = []
+        for index, row in hist.iterrows():
+            data.append({
+                "time": int(index.timestamp()), # UNIX timestamp for LW Charts
+                "open": row['Open'],
+                "high": row['High'],
+                "low": row['Low'],
+                "close": row['Close']
+            })
+        return data
+    except Exception as e:
+        print(f"Error fetching data for {symbol}: {e}. Falling back to mock data.")
+        # Mock data generation
+        import time
+        import random
+        data = []
+        base_time = int(time.time()) - 30 * 24 * 3600
+        price = 15.0
+        for i in range(30):
+            open_p = price
+            close_p = price + random.uniform(-1, 1)
+            high_p = max(open_p, close_p) + random.uniform(0, 0.5)
+            low_p = min(open_p, close_p) - random.uniform(0, 0.5)
+            data.append({
+                "time": base_time + i * 24 * 3600,
+                "open": open_p,
+                "high": high_p,
+                "low": low_p,
+                "close": close_p
+            })
+            price = close_p
+        return data
+
+@app.post("/api/strategy/start")
+def start_strategy_endpoint(req: StrategyRequest):
+    try:
+        sid = add_strategy(req.symbol, req.upper, req.lower, req.uid)
+        return {"status": "success", "strategy_id": sid, "message": "Strategy started"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/strategies")
+def get_strategies():
+    return get_all_strategies_status()
+
+if __name__ == "__main__":
+    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
