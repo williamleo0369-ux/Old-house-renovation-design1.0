@@ -68,12 +68,15 @@ def generate_report_image(symbol, close_price, change_pct, open_price, high, low
                 small_font = ImageFont.load_default()
 
     # Draw Text
-    draw.text((50, 40), f"今日战报: {symbol}", font=title_font, fill="white")
+    # Title logic: Priority Name, then Symbol
+    display_title = name if name else symbol
+    display_subtitle = symbol if name else ""
     
-    # Name (if provided)
+    draw.text((50, 40), f"今日战报: {display_title}", font=title_font, fill="white")
+    
     current_y = 110
-    if name:
-        draw.text((50, current_y), name, font=text_font, fill="#EEEEEE")
+    if display_subtitle:
+        draw.text((50, current_y), display_subtitle, font=text_font, fill="#EEEEEE")
         current_y += 40
     else:
         current_y += 10 # small padding if no name
