@@ -20,7 +20,8 @@ def add_strategy(symbol, upper, lower, uid):
     
     # Add job to scheduler if not exists
     if not scheduler.get_job(strategy_id):
-        scheduler.add_job(run_strategy, 'interval', seconds=60, args=[strategy_id], id=strategy_id)
+        # Check every 20 seconds for near-real-time monitoring
+        scheduler.add_job(run_strategy, 'interval', seconds=20, args=[strategy_id], id=strategy_id)
         logger.info(f"Added strategy job: {strategy_id}")
     
     return strategy_id

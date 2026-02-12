@@ -27,14 +27,13 @@ class GridStrategy:
     def fetch_current_price(self):
         try:
             ticker = yf.Ticker(self.symbol)
-            # fast way to get price
-            data = ticker.history(period="1d")
-            if not data.empty:
-                return data['Close'].iloc[-1]
+            # Use fast_info for real-time data (better than history)
+            return ticker.fast_info.last_price
         except Exception as e:
             logger.error(f"Error fetching price for {self.symbol}: {e}")
         
         # Fallback to mock price simulation for demo stability
+        # Only reached if fetch fails
         if self.balance > 0:
              # Use initial grid center or similar as base
              base = (self.upper_limit + self.lower_limit) / 2
