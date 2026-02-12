@@ -72,7 +72,8 @@ def fetch_stock_data(sym):
         return {
             "symbol": sym,
             "price": round(data["price"], 2),
-            "change_pct": round(data["change_percent"], 2)
+            "change_pct": round(data["change_percent"], 2),
+            "name": data.get("name", sym) # Pass name through
         }
     else:
         # Fallback if fetch fails (Simulated)
@@ -85,7 +86,8 @@ def fetch_stock_data(sym):
         return {
             "symbol": sym, 
             "price": round(price, 2), 
-            "change_pct": round(change, 2)
+            "change_pct": round(change, 2),
+            "name": sym # Fallback name
         }
 
 @app.get("/api/watchlist")
@@ -315,7 +317,8 @@ def generate_daily_report(symbol: str = "512100"):
             round(change, 2), 
             round(open_p, 2), 
             round(high, 2), 
-            round(low, 2)
+            round(low, 2),
+            name=stock_info.get("name", "")
         )
         
         return Response(content=img_io.getvalue(), media_type="image/png")
