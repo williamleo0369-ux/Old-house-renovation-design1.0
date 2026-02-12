@@ -4,11 +4,12 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>量化分析平台</title>
-    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://unpkg.com/lightweight-charts@4.1.1/dist/lightweight-charts.standalone.production.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/tsparticles-confetti@2.12.0/tsparticles.confetti.bundle.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/tsparticles@2.12.0/tsparticles.bundle.min.js"></script>
+    <!-- Use local static files for stability -->
+    <script src="/static/js/vue.global.js"></script>
+    <link href="https://cdn.staticfile.org/tailwindcss/2.2.19/tailwind.min.css" rel="stylesheet">
+    <script src="/static/js/lightweight-charts.js"></script>
+    <script src="/static/js/tsparticles.confetti.bundle.min.js"></script>
+    <script src="/static/js/tsparticles.bundle.min.js"></script>
     <style>
         body { margin: 0; overflow-x: hidden; background-color: #1a202c; color: white; }
         .chart-container { width: 100%; height: 500px; position: relative; }
@@ -190,16 +191,83 @@
                             <div class="flex justify-between items-center mb-2 px-2">
                                 <div class="flex items-center gap-2">
                                     <div class="text-xl font-bold">{{ currentSymbol }}</div>
+                                    <span class="text-sm text-gray-400">[{{ timeframe }}]</span>
                                     <button @click="toggleWatchlist" :class="isInWatchlist ? 'text-yellow-400' : 'text-gray-500'" class="hover:text-yellow-300 transition text-xl">
                                         ★
                                     </button>
                                 </div>
-                                <div class="text-2xl font-mono" :class="currentPrice >= lastPrice ? 'text-green-400' : 'text-red-400'">
-                                    {{ currentPrice.toFixed(2) }}
-                                    <span class="text-sm ml-2">{{ ((currentPrice - lastPrice)/lastPrice * 100).toFixed(2) }}%</span>
+                                <div class="flex items-center gap-2">
+                                    <!-- Timeframe Controls -->
+                                    <div class="flex space-x-1 bg-gray-700 rounded p-1 mr-4">
+                                        <button @click="setTimeframe('Intraday')" :class="['px-2 py-0.5 rounded text-xs transition', timeframe === 'Intraday' ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white']">分时</button>
+                                        <button @click="setTimeframe('1D')" :class="['px-2 py-0.5 rounded text-xs transition', timeframe === '1D' ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white']">日K</button>
+                                        <button @click="setTimeframe('1W')" :class="['px-2 py-0.5 rounded text-xs transition', timeframe === '1W' ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white']">周K</button>
+                                        <button @click="setTimeframe('1M')" :class="['px-2 py-0.5 rounded text-xs transition', timeframe === '1M' ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white']">月K</button>
+                                    </div>
+                                    <div class="text-2xl font-mono" :class="currentPrice >= lastPrice ? 'text-green-400' : 'text-red-400'">
+                                        {{ currentPrice.toFixed(2) }}
+                                        <span class="text-sm ml-2">{{ ((currentPrice - lastPrice)/lastPrice * 100).toFixed(2) }}%</span>
+                                    </div>
                                 </div>
                             </div>
                             <div ref="chartContainer" class="chart-container flex-grow"></div>
+                        </div>
+                    </div>
+
+                    <!-- Stock Details & Order Book (New) -->
+                    <div v-if="stockDetails" class="bg-gray-800 p-4 rounded-lg border border-gray-700 mb-6">
+                         <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                            <!-- Basic Info & Correlation -->
+                            <div class="lg:col-span-1">
+                                <h3 class="font-bold text-gray-300 mb-3 text-sm">基本信息 & 相关性</h3>
+                                <div class="grid grid-cols-2 gap-y-2 text-xs">
+                                    <div class="text-gray-500">昨收</div>
+                                    <div class="text-white text-right">{{ stockDetails.prev_close }}</div>
+                                    
+                                    <div class="text-gray-500">成交量</div>
+                                    <div class="text-white text-right">{{ (stockDetails.volume / 10000).toFixed(0) }}万</div>
+                                    
+                                    <div class="text-gray-500">Beta (相关性)</div>
+                                    <div class="text-right" :class="stockDetails.correlation > 1 ? 'text-red-400' : 'text-green-400'">
+                                        {{ stockDetails.correlation ? stockDetails.correlation.toFixed(2) : '-' }}
+                                    </div>
+                                    
+                                    <div class="text-gray-500">货币</div>
+                                    <div class="text-white text-right">{{ stockDetails.currency }}</div>
+                                </div>
+                            </div>
+
+                            <!-- Order Book (L1 + Simulated Depth) -->
+                            <div class="lg:col-span-2">
+                                 <h3 class="font-bold text-gray-300 mb-2 flex justify-between text-sm">
+                                    <span>📊 买卖五档 (Level 1+)</span>
+                                    <span class="text-xs text-gray-500 font-normal">实时模拟深度</span>
+                                 </h3>
+                                 <div class="grid grid-cols-2 gap-4 text-xs font-mono">
+                                     <!-- Asks (Sell) -->
+                                     <div>
+                                         <div class="flex justify-between text-gray-500 mb-1 px-1"><span>卖盘</span><span>价格</span><span>量</span></div>
+                                         <div v-for="(ask, i) in stockDetails.order_book.asks" :key="'ask'+i" class="flex justify-between items-center px-1 py-0.5 relative group hover:bg-gray-700 rounded">
+                                             <span class="text-gray-500 z-10">卖{{ 5-i }}</span>
+                                             <span class="text-red-400 z-10">{{ ask.price.toFixed(2) }}</span>
+                                             <span class="text-gray-300 z-10">{{ ask.volume }}</span>
+                                             <!-- Visual Bar -->
+                                             <div class="absolute right-0 top-0 bottom-0 bg-red-900 opacity-30 rounded" :style="{width: Math.min((ask.volume/1000)*100, 100) + '%'}"></div>
+                                         </div>
+                                     </div>
+                                     <!-- Bids (Buy) -->
+                                     <div>
+                                         <div class="flex justify-between text-gray-500 mb-1 px-1"><span>买盘</span><span>价格</span><span>量</span></div>
+                                         <div v-for="(bid, i) in stockDetails.order_book.bids" :key="'bid'+i" class="flex justify-between items-center px-1 py-0.5 relative group hover:bg-gray-700 rounded">
+                                             <span class="text-gray-500 z-10">买{{ i+1 }}</span>
+                                             <span class="text-green-400 z-10">{{ bid.price.toFixed(2) }}</span>
+                                             <span class="text-gray-300 z-10">{{ bid.volume }}</span>
+                                             <!-- Visual Bar -->
+                                             <div class="absolute right-0 top-0 bottom-0 bg-green-900 opacity-30 rounded" :style="{width: Math.min((bid.volume/1000)*100, 100) + '%'}"></div>
+                                         </div>
+                                     </div>
+                                 </div>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -258,18 +326,104 @@
                     <div class="bg-gray-800 p-6 rounded-lg border border-gray-700">
                         <h3 class="text-xl font-bold mb-4 text-purple-400">参数配置</h3>
                         <div class="space-y-4">
-                            <div>
-                                <label class="block text-sm text-gray-400 mb-1">网格上界 (Upper Limit)</label>
-                                <input v-model="gridUpper" type="number" class="w-full bg-gray-700 border border-gray-600 rounded p-2 text-white focus:border-blue-500 outline-none transition">
+                            <!-- ATR Suggestion -->
+                            <div v-if="stockDetails && stockDetails.atr" class="bg-gray-900 p-2 rounded text-xs text-gray-400 border border-gray-700">
+                                <div class="flex justify-between">
+                                    <span>ATR (20日波动): {{ stockDetails.atr.toFixed(3) }}</span>
+                                    <span class="text-blue-400 cursor-pointer hover:underline" @click="applyAtrSuggestion">应用建议网格</span>
+                                </div>
+                                <div class="mt-1">
+                                    建议网格间距: {{ stockDetails.suggested_grid.toFixed(3) }} (1 ATR)
+                                </div>
                             </div>
+
                             <div>
-                                <label class="block text-sm text-gray-400 mb-1">网格下界 (Lower Limit)</label>
-                                <input v-model="gridLower" type="number" class="w-full bg-gray-700 border border-gray-600 rounded p-2 text-white focus:border-blue-500 outline-none transition">
+                                <label class="block text-sm text-gray-400 mb-1">网格基准价 (Benchmark Price)</label>
+                                <div class="flex gap-2">
+                                    <input v-model.number="gridBenchmark" type="number" class="w-full bg-gray-700 border border-gray-600 rounded p-2 text-white focus:border-blue-500 outline-none transition">
+                                    <button @click="gridBenchmark = currentPrice" class="bg-gray-600 px-3 rounded hover:bg-gray-500 text-xs">当前</button>
+                                </div>
                             </div>
+                            
+                            <div>
+                                <label class="block text-sm text-gray-400 mb-1">网格比例 (Grid Ratio %)</label>
+                                <input v-model.number="gridRatio" type="number" step="0.1" class="w-full bg-gray-700 border border-gray-600 rounded p-2 text-white focus:border-blue-500 outline-none transition" @input="updateGridFromRatio">
+                            </div>
+
+                            <div class="grid grid-cols-2 gap-2">
+                                <div>
+                                    <label class="block text-sm text-gray-400 mb-1">网格上界 (Upper)</label>
+                                    <input v-model.number="gridUpper" type="number" class="w-full bg-gray-700 border border-gray-600 rounded p-2 text-white focus:border-blue-500 outline-none transition">
+                                </div>
+                                <div>
+                                    <label class="block text-sm text-gray-400 mb-1">网格下界 (Lower)</label>
+                                    <input v-model.number="gridLower" type="number" class="w-full bg-gray-700 border border-gray-600 rounded p-2 text-white focus:border-blue-500 outline-none transition">
+                                </div>
+                            </div>
+                            
                             <button @click="startStrategy" 
                                     :class="['w-full py-3 rounded transition font-bold shadow-lg transform active:scale-95', isRunning ? 'bg-red-600 hover:bg-red-700' : 'bg-green-600 hover:bg-green-700']">
                                 {{ isRunning ? '停止策略 (Stop Strategy)' : '启动监控策略 (Start Monitoring)' }}
                             </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Transaction Cost Calculator Section -->
+        <section id="calculator" class="section">
+            <div class="container mx-auto">
+                <h2 class="text-4xl font-bold mb-8 text-center">交易成本计算器 (Transaction Cost)</h2>
+                <div class="bg-gray-800 p-8 rounded-lg border border-gray-700 max-w-4xl mx-auto">
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
+                        <div>
+                            <h3 class="text-xl font-bold mb-4 text-blue-400">输入参数</h3>
+                            <div class="space-y-4">
+                                <div>
+                                    <label class="block text-sm text-gray-400 mb-1">总资金 (Total Capital)</label>
+                                    <input v-model.number="calcCapital" type="number" class="w-full bg-gray-700 border border-gray-600 rounded p-3 text-white focus:border-blue-500 outline-none">
+                                </div>
+                                <div>
+                                    <label class="block text-sm text-gray-400 mb-1">当前价格 (Current Price)</label>
+                                    <input v-model.number="calcPrice" type="number" class="w-full bg-gray-700 border border-gray-600 rounded p-3 text-white focus:border-blue-500 outline-none">
+                                </div>
+                                <div>
+                                    <label class="block text-sm text-gray-400 mb-1">佣金费率 (Commission Rate)</label>
+                                    <div class="flex items-center">
+                                        <input v-model.number="calcRate" type="number" step="0.0001" class="w-full bg-gray-700 border border-gray-600 rounded-l p-3 text-white focus:border-blue-500 outline-none">
+                                        <span class="bg-gray-600 px-3 py-3 rounded-r text-gray-300">%</span>
+                                    </div>
+                                    <p class="text-xs text-gray-500 mt-1">通常为万分之2.5 (0.025%)</p>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div>
+                            <h3 class="text-xl font-bold mb-4 text-green-400">计算结果</h3>
+                            <div class="bg-gray-900 p-6 rounded border border-gray-700 h-full">
+                                <div class="mb-4">
+                                    <div class="text-gray-400 text-sm">最大可买股数</div>
+                                    <div class="text-2xl font-mono text-white">{{ maxShares }} 股</div>
+                                    <div class="text-xs text-gray-500">({{ (maxShares/100).toFixed(0) }} 手)</div>
+                                </div>
+                                
+                                <div class="mb-4">
+                                    <div class="text-gray-400 text-sm">预估佣金 (Commission)</div>
+                                    <div class="text-2xl font-mono" :class="commission < 5 ? 'text-red-400' : 'text-green-400'">
+                                        ¥{{ commission.toFixed(2) }}
+                                    </div>
+                                    <div v-if="commission < 5" class="mt-2 bg-red-900 bg-opacity-50 border border-red-700 text-red-300 p-2 rounded text-xs flex items-start">
+                                        <span class="mr-1">⚠️</span>
+                                        <span>当前买入笔数过小，佣金不足5元，券商将按5元收取 (免五限制)。建议增加单笔金额。</span>
+                                    </div>
+                                </div>
+                                
+                                <div>
+                                    <div class="text-gray-400 text-sm">实际交易成本占比</div>
+                                    <div class="text-xl font-mono text-white">{{ ((Math.max(commission, 5) / (maxShares * calcPrice)) * 100).toFixed(4) }}%</div>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -306,6 +460,9 @@
                 const lastPrice = ref(0.00); // For calculating change
                 const gridUpper = ref(85.00);
                 const gridLower = ref(75.00);
+                const gridBenchmark = ref(80.00);
+                const gridRatio = ref(5.0); // 5%
+
                 const isRunning = ref(false);
                 const logs = ref([]);
                 const wxUid = ref('');
@@ -316,11 +473,56 @@
                 const watchList = ref([]); // Dynamic
                 const isLoadingWatchlist = ref(false);
                 
+                // Chart Data & State
+                const timeframe = ref('1D'); // 1D, 1W, 1M, Intraday (1m)
+                const stockDetails = ref(null); // Detailed info (L1, Correlation)
+
+                // Calculator
+                const calcCapital = ref(50000);
+                const calcPrice = ref(10.00);
+                const calcRate = ref(0.025); // 0.025%
+
                 const account = ref({
                     total: 100000,
                     cash: 50000,
                     pnl: 5.2
                 });
+
+                const maxShares = computed(() => {
+                    if (calcPrice.value <= 0) return 0;
+                    // Calculate raw shares
+                    let raw = Math.floor(calcCapital.value / calcPrice.value);
+                    // Round down to nearest 100 (1 lot)
+                    return Math.floor(raw / 100) * 100;
+                });
+
+                const commission = computed(() => {
+                    if (maxShares.value <= 0) return 0;
+                    const amt = maxShares.value * calcPrice.value;
+                    return amt * (calcRate.value / 100);
+                });
+
+                const updateGridFromRatio = () => {
+                    if (gridBenchmark.value > 0) {
+                         const delta = gridBenchmark.value * (gridRatio.value / 100);
+                         gridUpper.value = parseFloat((gridBenchmark.value + delta).toFixed(2));
+                         gridLower.value = parseFloat((gridBenchmark.value - delta).toFixed(2));
+                    }
+                };
+                
+                // When benchmark changes, also update if ratio is set? 
+                // Or maybe user wants to manually set upper/lower. 
+                // Let's keep them somewhat synced if ratio changes.
+
+                const applyAtrSuggestion = () => {
+                    if (stockDetails.value && stockDetails.value.suggested_grid) {
+                        const atr = stockDetails.value.suggested_grid;
+                        gridBenchmark.value = currentPrice.value;
+                        gridUpper.value = parseFloat((currentPrice.value + atr * 2).toFixed(2)); // 2 ATR width
+                        gridLower.value = parseFloat((currentPrice.value - atr * 2).toFixed(2));
+                        gridRatio.value = parseFloat(((atr * 2 / currentPrice.value) * 100).toFixed(2));
+                    }
+                };
 
                 const isInWatchlist = computed(() => {
                     return watchList.value.some(item => item.symbol === currentSymbol.value);
@@ -371,12 +573,16 @@
                     if (!symbol) return;
                     
                     if (marketType.value === 'CN') {
-                        // Auto-suffix for A-shares
+                        // Optimized Code Logic (User Request)
                         if (/^\d{6}$/.test(symbol)) {
-                            // 6xxxx = SH Main, 5xxxx = SH ETF -> .SS
-                            if (symbol.startsWith('6') || symbol.startsWith('5')) symbol += '.SS';
-                            // 0xxxx = SZ Main, 3xxxx = ChiNext, 1xxxx = SZ ETF -> .SZ
-                            else symbol += '.SZ'; 
+                             // 5xxxxx -> ETF, 6xxxxx -> SH Main
+                             if (symbol.startsWith('5') || symbol.startsWith('6')) {
+                                 // User explicitly asked: 5/6 -> .SH (or .SS), 0/3 -> .SZ
+                                 // Yahoo uses .SS for Shanghai.
+                                 symbol += '.SS'; 
+                             } else if (symbol.startsWith('0') || symbol.startsWith('3')) {
+                                 symbol += '.SZ';
+                             }
                         }
                     } else if (marketType.value === 'HK') {
                         if (/^\d+$/.test(symbol)) {
@@ -446,12 +652,7 @@
                 
                 // Draw Grid Lines on Chart
                 const updateGridLines = () => {
-                    if (!candlestickSeries.value || !isRunning.value) {
-                         // Clear lines if not running
-                         priceLines.value.forEach(line => candlestickSeries.value.removePriceLine(line));
-                         priceLines.value = [];
-                         return;
-                    }
+                    if (!candlestickSeries.value) return; // Should be able to draw even if not running to visualize setup
                     
                     // Clear existing
                     priceLines.value.forEach(line => candlestickSeries.value.removePriceLine(line));
@@ -459,15 +660,39 @@
                     
                     // Add new lines
                     const step = (gridUpper.value - gridLower.value) / 5;
-                    for (let i = 0; i <= 5; i++) {
-                        const price = parseFloat(gridLower.value) + i * step;
+                    
+                    // Upper (Resistance) - Red
+                    const upperLine = candlestickSeries.value.createPriceLine({
+                        price: gridUpper.value,
+                        color: '#ef5350',
+                        lineWidth: 2,
+                        lineStyle: LightweightCharts.LineStyle.Solid,
+                        axisLabelVisible: true,
+                        title: '卖出上限 (Sell)',
+                    });
+                    priceLines.value.push(upperLine);
+                    
+                    // Lower (Support) - Green
+                    const lowerLine = candlestickSeries.value.createPriceLine({
+                        price: gridLower.value,
+                        color: '#26a69a',
+                        lineWidth: 2,
+                        lineStyle: LightweightCharts.LineStyle.Solid,
+                        axisLabelVisible: true,
+                        title: '买入下限 (Buy)',
+                    });
+                    priceLines.value.push(lowerLine);
+                    
+                    // Inner Grids - Dashed
+                    for (let i = 1; i < 5; i++) {
+                        const p = gridLower.value + i * step;
                         const line = candlestickSeries.value.createPriceLine({
-                            price: price,
-                            color: '#3b82f6',
+                            price: p,
+                            color: '#fbbf24', // Amber
                             lineWidth: 1,
-                            lineStyle: LightweightCharts.LineStyle.Dotted,
-                            axisLabelVisible: true,
-                            title: `Grid ${i}`,
+                            lineStyle: LightweightCharts.LineStyle.Dashed,
+                            axisLabelVisible: false,
+                            title: `网格 ${i}`,
                         });
                         priceLines.value.push(line);
                     }
@@ -511,19 +736,37 @@
                 };
 
                 const fetchData = async (symbol) => {
-                    currentSymbol.value = symbol;
                     try {
-                        const response = await fetch(`/api/kline?symbol=${symbol}&period=1mo&interval=1d`);
-                        const data = await response.json();
+                        currentSymbol.value = symbol;
+                        
+                        // Map timeframe to API params
+                        let period = '1mo';
+                        let interval = '1d';
+                        
+                        if (timeframe.value === '1D') { period = '1mo'; interval = '1d'; }
+                        else if (timeframe.value === '1W') { period = '6mo'; interval = '1wk'; }
+                        else if (timeframe.value === '1M') { period = '2y'; interval = '1mo'; }
+                        else if (timeframe.value === 'Intraday') { period = '1d'; interval = '1m'; }
+
+                        const res = await fetch(`/api/kline?symbol=${symbol}&period=${period}&interval=${interval}`);
+                        const data = await res.json();
                         
                         if (candlestickSeries.value) {
                             candlestickSeries.value.setData(data);
                         }
                         
-                        const item = data[data.length - 1];
-                        if (item) {
+                        if (data.length > 0) {
+                            const last = data[data.length - 1];
                             lastPrice.value = currentPrice.value;
-                            currentPrice.value = item.close;
+                            currentPrice.value = last.close;
+                            
+                            // Update grid range if not running
+                            if (!isRunning.value) {
+                                gridUpper.value = Number((last.close * 1.05).toFixed(2));
+                                gridLower.value = Number((last.close * 0.95).toFixed(2));
+                            }
+                            // Trigger dynamic line update
+                            updateGridLines();
                         }
                         
                         // Update Watchlist price
@@ -533,13 +776,29 @@
                         // Fetch smart analysis
                         fetchPositionSizing(symbol);
                         
-                    } catch (error) {
-                        console.error('Fetch error:', error);
-                        // Fallback mock
-                        const data = generateData();
-                        candlestickSeries.value.setData(data);
-                        currentPrice.value = data[data.length - 1].close;
+                        // Fetch Details (L1, Correlation)
+                        fetchStockDetails(symbol);
+
+                    } catch (e) {
+                        console.error("Fetch error", e);
+                        addLog(`数据获取失败: ${e.message}`);
                     }
+                };
+
+                const fetchStockDetails = async (symbol) => {
+                    try {
+                        const res = await fetch(`/api/stock/details/${symbol}`);
+                        if (res.ok) {
+                            stockDetails.value = await res.json();
+                        }
+                    } catch (e) {
+                         console.error("Details fetch error", e);
+                    }
+                };
+                
+                const setTimeframe = (tf) => {
+                    timeframe.value = tf;
+                    fetchData(currentSymbol.value);
                 };
 
                 const generateData = () => {
@@ -639,7 +898,10 @@
                     gridUpper, gridLower, isRunning, logs, wxUid, 
                     scrollTo, startStrategy, saveSettings, syncStrategies,
                     watchList, account, gridProgress, marketSentiment, positionSuggestion, sectorMovers,
-                    marketType, searchInput, handleSearch, toggleWatchlist, isInWatchlist
+                    marketType, searchInput, handleSearch, toggleWatchlist, isInWatchlist,
+                    stockDetails, timeframe, setTimeframe,
+                    gridBenchmark, gridRatio, updateGridFromRatio, applyAtrSuggestion,
+                    calcPrice, calcRate, maxShares, commission
                 };
             }
         }).mount('#app');

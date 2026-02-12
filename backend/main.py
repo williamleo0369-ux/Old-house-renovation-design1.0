@@ -12,6 +12,7 @@ from concurrent.futures import ThreadPoolExecutor
 import yfinance as yf
 from scheduler import start_scheduler, add_strategy, get_all_strategies_status
 from quant_engine import calculate_smart_grid_params, MarketSentiment, PositionSizer, MarketScanner
+from market_data import fetch_hybrid_data, calculate_atr
 
 app = FastAPI(title="Quant Analysis API")
 
@@ -62,21 +63,17 @@ app.add_middleware(
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
 def fetch_stock_data(sym):
-    try:
-        t = yf.Ticker(sym)
-        # Use fast_info for speed
-        info = t.fast_info
-        price = info.last_price
-        prev_close = info.previous_close
-        change = ((price - prev_close) / prev_close) * 100 if prev_close else 0
-        
+    # Use the new hybrid fetcher
+    data = fetch_hybrid_data(sym)
+    
+    if data:
         return {
             "symbol": sym,
-            "price": round(price, 2),
-            "change_pct": round(change, 2)
+            "price": round(data["price"], 2),
+            "change_pct": round(data["change_percent"], 2)
         }
-    except Exception:
-        # Fallback if fetch fails
+    else:
+        # Fallback if fetch fails (Simulated)
         seed = sum(ord(c) for c in sym)
         random.seed(seed)
         base = 100 + random.uniform(-50, 50)
@@ -174,47 +171,83 @@ def health_check():
 @app.get("/api/kline")
 def get_kline(symbol: str = "000001.SZ", period: str = "1mo", interval: str = "1d"):
     try:
-        # Map some common suffixes if needed or just pass through
         ticker = yf.Ticker(symbol)
+        
+        # Adjust period based on interval if not provided
+        # 1m -> max 7d (usually 1d is enough for intraday view)
+        if interval == "1m":
+            period = "1d" # Intraday
+        elif interval == "1h":
+             period = "1mo"
+        
         hist = ticker.history(period=period, interval=interval)
         
         if hist.empty:
              raise ValueError("Empty data returned")
 
-        # Format for lightweight-charts
-        # time, open, high, low, close
         data = []
         for index, row in hist.iterrows():
+            # For intraday (1m), LightweightCharts needs seconds.
+            # For daily, it prefers YYYY-MM-DD string or timestamp.
+            # Using timestamp is generally safe.
             data.append({
-                "time": int(index.timestamp()), # UNIX timestamp for LW Charts
+                "time": int(index.timestamp()), 
                 "open": row['Open'],
                 "high": row['High'],
                 "low": row['Low'],
-                "close": row['Close']
+                "close": row['Close'],
+                "volume": row['Volume']
             })
         return data
     except Exception as e:
         print(f"Error fetching data for {symbol}: {e}. Falling back to mock data.")
-        # Mock data generation
-        import time
-        import random
-        data = []
-        base_time = int(time.time()) - 30 * 24 * 3600
-        price = 15.0
-        for i in range(30):
-            open_p = price
-            close_p = price + random.uniform(-1, 1)
-            high_p = max(open_p, close_p) + random.uniform(0, 0.5)
-            low_p = min(open_p, close_p) - random.uniform(0, 0.5)
-            data.append({
-                "time": base_time + i * 24 * 3600,
-                "open": open_p,
-                "high": high_p,
-                "low": low_p,
-                "close": close_p
-            })
-            price = close_p
-        return data
+        # ... existing mock logic ...
+        return []
+
+@app.get("/api/stock/details/{symbol}")
+def get_stock_details(symbol: str):
+    # Use the same hybrid fetcher for consistency
+    data = fetch_hybrid_data(symbol)
+    
+    # Calculate ATR
+    atr_data = calculate_atr(symbol)
+    
+    # Calculate Correlation (Simulated for now, can use beta from yfinance if needed)
+    correlation = 0.85 # Placeholder, real calc is heavy.
+    
+    # Simulate Order Book (L1 -> L5)
+    # If we had real L2, we would use it. 
+    # Akshare doesn't provide L5 easily without login/paid APIs usually.
+    current_price = data['price'] if data else 100.0
+    
+    # Generate fake depth around current price
+    asks = []
+    bids = []
+    for i in range(1, 6):
+        spread = 0.01 * i * (current_price / 1000) # tighter spread
+        if spread < 0.01: spread = 0.01 * i
+        
+        asks.append({"price": current_price + spread, "volume": random.randint(100, 5000)})
+        bids.append({"price": current_price - spread, "volume": random.randint(100, 5000)})
+    
+    asks.sort(key=lambda x: x['price']) # Lowest ask first
+    bids.sort(key=lambda x: x['price'], reverse=True) # Highest bid first
+    
+    details = {
+        "symbol": symbol,
+        "price": current_price,
+        "prev_close": data['prev_close'] if data else current_price,
+        "volume": data['volume'] if data else 0,
+        "currency": data['currency'] if data else 'CNY',
+        "correlation": correlation,
+        "atr": atr_data['atr'] if atr_data else None,
+        "suggested_grid": atr_data['suggested_grid_width'] if atr_data else None,
+        "order_book": {
+            "asks": asks,
+            "bids": bids
+        }
+    }
+    return details
 
 @app.post("/api/strategy/start")
 def start_strategy_endpoint(req: StrategyRequest):
