@@ -154,7 +154,7 @@
                                         </div>
                                     </div>
                                     <div :class="item.change_pct >= 0 ? 'text-green-400' : 'text-red-400'">
-                                        {{ item.price }}
+                                        {{ typeof item.price === 'number' ? item.price.toFixed(3) : item.price }}
                                     </div>
                                 </div>
                             </div>
@@ -217,8 +217,8 @@
                                         <button @click="setTimeframe('1M')" :class="['px-2 py-0.5 rounded text-xs transition', timeframe === '1M' ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white']">月K</button>
                                     </div>
                                     <div class="text-2xl font-mono" :class="currentPrice >= lastPrice ? 'text-green-400' : 'text-red-400'">
-                                        {{ currentPrice.toFixed(2) }}
-                                        <span class="text-sm ml-2">{{ ((currentPrice - lastPrice)/lastPrice * 100).toFixed(2) }}%</span>
+                                        {{ currentPrice.toFixed(3) }}
+                                        <span class="text-sm ml-2">{{ ((currentPrice - lastPrice)/lastPrice * 100).toFixed(3) }}%</span>
                                     </div>
                                 </div>
                             </div>
@@ -234,7 +234,7 @@
                                 <h3 class="font-bold text-gray-300 mb-3 text-sm">基本信息 & 相关性</h3>
                                 <div class="grid grid-cols-2 gap-y-2 text-xs">
                                     <div class="text-gray-500">昨收</div>
-                                    <div class="text-white text-right">{{ stockDetails.prev_close }}</div>
+                                    <div class="text-white text-right">{{ typeof stockDetails.prev_close === 'number' ? stockDetails.prev_close.toFixed(3) : stockDetails.prev_close }}</div>
                                     
                                     <div class="text-gray-500">成交量</div>
                                     <div class="text-white text-right">{{ (stockDetails.volume / 10000).toFixed(0) }}万</div>
@@ -261,7 +261,7 @@
                                          <div class="flex justify-between text-gray-500 mb-1 px-1"><span>卖盘</span><span>价格</span><span>量</span></div>
                                          <div v-for="(ask, i) in stockDetails.order_book.asks" :key="'ask'+i" class="flex justify-between items-center px-1 py-0.5 relative group hover:bg-gray-700 rounded">
                                              <span class="text-gray-500 z-10">卖{{ 5-i }}</span>
-                                             <span class="text-red-400 z-10">{{ ask.price.toFixed(2) }}</span>
+                                             <span class="text-red-400 z-10">{{ ask.price.toFixed(3) }}</span>
                                              <span class="text-gray-300 z-10">{{ ask.volume }}</span>
                                              <!-- Visual Bar -->
                                              <div class="absolute right-0 top-0 bottom-0 bg-red-900 opacity-30 rounded" :style="{width: Math.min((ask.volume/1000)*100, 100) + '%'}"></div>
@@ -272,7 +272,7 @@
                                          <div class="flex justify-between text-gray-500 mb-1 px-1"><span>买盘</span><span>价格</span><span>量</span></div>
                                          <div v-for="(bid, i) in stockDetails.order_book.bids" :key="'bid'+i" class="flex justify-between items-center px-1 py-0.5 relative group hover:bg-gray-700 rounded">
                                              <span class="text-gray-500 z-10">买{{ i+1 }}</span>
-                                             <span class="text-green-400 z-10">{{ bid.price.toFixed(2) }}</span>
+                                             <span class="text-green-400 z-10">{{ bid.price.toFixed(3) }}</span>
                                              <span class="text-gray-300 z-10">{{ bid.volume }}</span>
                                              <!-- Visual Bar -->
                                              <div class="absolute right-0 top-0 bottom-0 bg-green-900 opacity-30 rounded" :style="{width: Math.min((bid.volume/1000)*100, 100) + '%'}"></div>

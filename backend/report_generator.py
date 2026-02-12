@@ -88,19 +88,19 @@ def generate_report_image(symbol, close_price, change_pct, open_price, high, low
 
     # Main Price
     price_color = "white"
-    draw.text((50, current_y), f"收盘价: {close_price}", font=title_font, fill=price_color)
+    draw.text((50, current_y), f"收盘价: {close_price:.3f}", font=title_font, fill=price_color)
     
     # Change Pct
-    pct_text = f"涨跌幅: {change_pct}%"
+    pct_text = f"涨跌幅: {change_pct:.3f}%"
     draw.text((50, current_y + 80), pct_text, font=text_font, fill="yellow" if change_pct >= 0 else "green")
 
     # Details Box
     box_y = current_y + 150
     draw.rectangle([(40, box_y), (760, box_y + 200)], outline="white", width=2)
     
-    draw.text((60, box_y + 20), f"开盘: {open_price}", font=text_font, fill="white")
-    draw.text((60, box_y + 80), f"最高: {high}", font=text_font, fill="white")
-    draw.text((60, box_y + 140), f"最低: {low}", font=text_font, fill="white")
+    draw.text((60, box_y + 20), f"开盘: {open_price:.3f}", font=text_font, fill="white")
+    draw.text((60, box_y + 80), f"最高: {high:.3f}", font=text_font, fill="white")
+    draw.text((60, box_y + 140), f"最低: {low:.3f}", font=text_font, fill="white")
 
     # Add Watermark
     draw.text((550, 550), "QuantVisual Monitor", font=small_font, fill="#FFAAAA")
