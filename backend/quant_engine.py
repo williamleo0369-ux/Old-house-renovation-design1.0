@@ -91,6 +91,97 @@ class GridStrategy:
             "balance": self.balance
         }
 
+class MarketSentiment:
+    """
+    Analyzes overall market risk (Red/Green light).
+    Uses major indices (e.g., S&P 500 or CSI 300) to determine trend.
+    """
+    @staticmethod
+    def analyze(market_type="CN"):
+        symbol = "000001.SS" if market_type == "CN" else "SPY"
+        try:
+            ticker = yf.Ticker(symbol)
+            hist = ticker.history(period="3mo")
+            if hist.empty:
+                return {"status": "neutral", "score": 50, "message": "Data unavailable"}
+            
+            current_price = hist['Close'].iloc[-1]
+            ma20 = hist['Close'].rolling(window=20).mean().iloc[-1]
+            ma60 = hist['Close'].rolling(window=60).mean().iloc[-1]
+            
+            # Simple Logic: Price > MA20 > MA60 = Bull (Green)
+            # Price < MA20 = Caution (Yellow)
+            # Price < MA60 = Bear (Red)
+            
+            score = 50
+            status = "neutral"
+            color = "yellow"
+            
+            if current_price > ma20 and ma20 > ma60:
+                score = 85
+                status = "bullish"
+                color = "green"
+            elif current_price < ma60:
+                score = 20
+                status = "bearish"
+                color = "red"
+            else:
+                score = 50
+                status = "consolidation"
+                color = "yellow"
+                
+            return {
+                "status": status,
+                "score": score,
+                "color": color,
+                "benchmark": symbol,
+                "current": round(current_price, 2),
+                "ma20": round(ma20, 2)
+            }
+        except Exception as e:
+            logger.error(f"Sentiment analysis failed: {e}")
+            return {"status": "error", "score": 0, "color": "gray"}
+
+class PositionSizer:
+    """
+    Optimizes small position sizing based on account size and volatility.
+    """
+    @staticmethod
+    def calculate(symbol, account_balance, risk_pct=2.0):
+        try:
+            ticker = yf.Ticker(symbol)
+            hist = ticker.history(period="1mo")
+            if hist.empty:
+                return None
+            
+            current_price = hist['Close'].iloc[-1]
+            # ATR (Average True Range) approximation using high-low
+            volatility = (hist['High'] - hist['Low']).mean()
+            
+            # Risk per trade = Account * Risk%
+            risk_amount = account_balance * (risk_pct / 100)
+            
+            # Stop loss distance (e.g., 2 * Volatility)
+            stop_loss_dist = volatility * 2
+            
+            if stop_loss_dist == 0:
+                return None
+                
+            # Shares = Risk Amount / Stop Loss Distance
+            shares = int(risk_amount / stop_loss_dist)
+            
+            return {
+                "symbol": symbol,
+                "suggested_shares": shares,
+                "entry_price": round(current_price, 2),
+                "stop_loss": round(current_price - stop_loss_dist, 2),
+                "take_profit": round(current_price + stop_loss_dist * 2, 2), # 1:2 Risk/Reward
+                "risk_amount": round(risk_amount, 2)
+            }
+        except Exception as e:
+            logger.error(f"Position sizing failed: {e}")
+            return None
+
 def calculate_smart_grid_params(symbol):
     """
     Automatically calculate grid parameters based on recent history.

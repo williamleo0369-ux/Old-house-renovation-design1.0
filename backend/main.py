@@ -9,7 +9,7 @@ import json
 import random
 import yfinance as yf
 from scheduler import start_scheduler, add_strategy, get_all_strategies_status
-from quant_engine import calculate_smart_grid_params
+from quant_engine import calculate_smart_grid_params, MarketSentiment, PositionSizer
 
 app = FastAPI(title="Quant Analysis API")
 
@@ -201,6 +201,17 @@ def start_strategy_endpoint(req: StrategyRequest):
 @app.get("/api/strategies")
 def get_strategies():
     return get_all_strategies_status()
+
+@app.get("/api/market/sentiment")
+def get_market_sentiment(type: str = "CN"):
+    return MarketSentiment.analyze(type)
+
+@app.get("/api/analysis/position")
+def get_position_sizing(symbol: str, balance: float = 10000.0):
+    res = PositionSizer.calculate(symbol, balance)
+    if not res:
+        raise HTTPException(status_code=400, detail="Calculation failed")
+    return res
 
 if __name__ == "__main__":
     uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
