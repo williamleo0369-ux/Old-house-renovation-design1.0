@@ -335,7 +335,7 @@
                 const fetchWatchlist = async () => {
                     try {
                         const controller = new AbortController();
-                        const timeoutId = setTimeout(() => controller.abort(), 5000); // 5s timeout
+                        const timeoutId = setTimeout(() => controller.abort(), 15000); // 15s timeout
                         
                         const res = await fetch('/api/watchlist', { signal: controller.signal });
                         clearTimeout(timeoutId);

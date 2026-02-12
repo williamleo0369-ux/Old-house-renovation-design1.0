@@ -7,11 +7,20 @@ import uvicorn
 import os
 import json
 import random
+import time
+from concurrent.futures import ThreadPoolExecutor
 import yfinance as yf
 from scheduler import start_scheduler, add_strategy, get_all_strategies_status
 from quant_engine import calculate_smart_grid_params, MarketSentiment, PositionSizer, MarketScanner
 
 app = FastAPI(title="Quant Analysis API")
+
+# Simple In-Memory Cache
+WATCHLIST_CACHE = {
+    "timestamp": 0,
+    "data": []
+}
+CACHE_DURATION = 30  # seconds
 
 # Start Scheduler
 start_scheduler()
@@ -40,6 +49,7 @@ class StrategyRequest(BaseModel):
 
 class WatchlistRequest(BaseModel):
     symbol: str
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],  # Allow all origins for development
@@ -51,39 +61,54 @@ app.add_middleware(
 # Mount static files
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
+def fetch_stock_data(sym):
+    try:
+        t = yf.Ticker(sym)
+        # Use fast_info for speed
+        info = t.fast_info
+        price = info.last_price
+        prev_close = info.previous_close
+        change = ((price - prev_close) / prev_close) * 100 if prev_close else 0
+        
+        return {
+            "symbol": sym,
+            "price": round(price, 2),
+            "change_pct": round(change, 2)
+        }
+    except Exception:
+        # Fallback if fetch fails
+        seed = sum(ord(c) for c in sym)
+        random.seed(seed)
+        base = 100 + random.uniform(-50, 50)
+        price = base + random.uniform(-2, 2)
+        change = random.uniform(-2, 2)
+        
+        return {
+            "symbol": sym, 
+            "price": round(price, 2), 
+            "change_pct": round(change, 2)
+        }
+
 @app.get("/api/watchlist")
 def get_watchlist():
+    global WATCHLIST_CACHE
+    
+    # Check cache
+    if time.time() - WATCHLIST_CACHE["timestamp"] < CACHE_DURATION:
+        return WATCHLIST_CACHE["data"]
+
     symbols = load_watchlist_file()
     data = []
-    for sym in symbols:
-        try:
-            # Simple caching could be added here
-            t = yf.Ticker(sym)
-            # Use fast_info for speed
-            info = t.fast_info
-            price = info.last_price
-            prev_close = info.previous_close
-            change = ((price - prev_close) / prev_close) * 100 if prev_close else 0
+    
+    # Parallel Fetching
+    with ThreadPoolExecutor(max_workers=10) as executor:
+        results = executor.map(fetch_stock_data, symbols)
+        data = list(results)
             
-            data.append({
-                "symbol": sym,
-                "price": round(price, 2),
-                "change_pct": round(change, 2)
-            })
-        except Exception:
-             # Fallback if fetch fails
-             # Generate a somewhat realistic mock price based on hash of symbol
-             seed = sum(ord(c) for c in sym)
-             random.seed(seed)
-             base = 100 + random.uniform(-50, 50)
-             price = base + random.uniform(-2, 2)
-             change = random.uniform(-2, 2)
-             
-             data.append({
-                 "symbol": sym, 
-                 "price": round(price, 2), 
-                 "change_pct": round(change, 2)
-             })
+    # Update Cache
+    WATCHLIST_CACHE["timestamp"] = time.time()
+    WATCHLIST_CACHE["data"] = data
+    
     return data
 
 @app.post("/api/watchlist")
