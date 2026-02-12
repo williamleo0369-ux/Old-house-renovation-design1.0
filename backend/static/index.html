@@ -131,7 +131,14 @@
                                 </button>
                             </div>
                             <div class="space-y-2">
-                                <div v-for="item in watchList" :key="item.symbol" 
+                                <div v-if="isLoadingWatchlist" class="text-center py-4 text-gray-400">
+                                    <div class="inline-block animate-spin rounded-full h-4 w-4 border-t-2 border-b-2 border-blue-500 mr-2"></div>
+                                    加载中...
+                                </div>
+                                <div v-else-if="watchList.length === 0" class="text-center py-4 text-gray-500">
+                                    暂无关注，请添加
+                                </div>
+                                <div v-else v-for="item in watchList" :key="item.symbol" 
                                      @click="fetchData(item.symbol)"
                                      :class="['p-3 rounded cursor-pointer transition flex justify-between items-center', currentSymbol === item.symbol ? 'bg-blue-600' : 'bg-gray-800 hover:bg-gray-700']">
                                     <div>
@@ -307,6 +314,7 @@
                 const marketType = ref('CN');
                 const searchInput = ref('');
                 const watchList = ref([]); // Dynamic
+                const isLoadingWatchlist = ref(false);
                 
                 const account = ref({
                     total: 100000,
@@ -334,8 +342,9 @@
 
                 const fetchWatchlist = async () => {
                     try {
+                        isLoadingWatchlist.value = true;
                         const controller = new AbortController();
-                        const timeoutId = setTimeout(() => controller.abort(), 15000); // 15s timeout
+                        const timeoutId = setTimeout(() => controller.abort(), 45000); // 45s timeout (Render can be slow)
                         
                         const res = await fetch('/api/watchlist', { signal: controller.signal });
                         clearTimeout(timeoutId);
@@ -351,6 +360,9 @@
                         }));
                     } catch(e) {
                         console.error("Watchlist fetch error", e);
+                        addLog(`获取列表失败: ${e.message}`);
+                    } finally {
+                        isLoadingWatchlist.value = false;
                     }
                 };
 

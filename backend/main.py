@@ -101,7 +101,8 @@ def get_watchlist():
     data = []
     
     # Parallel Fetching
-    with ThreadPoolExecutor(max_workers=10) as executor:
+    # Increased workers to 20 for faster I/O bound fetching
+    with ThreadPoolExecutor(max_workers=20) as executor:
         results = executor.map(fetch_stock_data, symbols)
         data = list(results)
             
