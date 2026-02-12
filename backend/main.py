@@ -9,6 +9,7 @@ import json
 import random
 import yfinance as yf
 from scheduler import start_scheduler, add_strategy, get_all_strategies_status
+from quant_engine import calculate_smart_grid_params
 
 app = FastAPI(title="Quant Analysis API")
 
@@ -91,7 +92,42 @@ def add_to_watchlist(req: WatchlistRequest):
     if req.symbol not in current:
         current.append(req.symbol)
         save_watchlist_file(current)
+    
+    # Auto-start strategy for the new symbol
+    try:
+        params = calculate_smart_grid_params(req.symbol)
+        if params:
+            upper, lower = params
+            # Use a default UID or from env
+            default_uid = os.environ.get("WX_UID", "default_user")
+            add_strategy(req.symbol, upper, lower, default_uid)
+            print(f"Auto-strategy started for {req.symbol}: {upper}-{lower}")
+    except Exception as e:
+        print(f"Failed to auto-start strategy for {req.symbol}: {e}")
+
     return {"status": "success", "watchlist": current}
+
+@app.post("/api/watchlist/sync_strategies")
+def sync_strategies():
+    current = load_watchlist_file()
+    started = []
+    failed = []
+    default_uid = os.environ.get("WX_UID", "default_user")
+    
+    for symbol in current:
+        try:
+            params = calculate_smart_grid_params(symbol)
+            if params:
+                upper, lower = params
+                add_strategy(symbol, upper, lower, default_uid)
+                started.append(symbol)
+            else:
+                failed.append(symbol)
+        except Exception as e:
+            print(f"Error syncing {symbol}: {e}")
+            failed.append(symbol)
+            
+    return {"status": "success", "started": started, "failed": failed}
 
 @app.delete("/api/watchlist/{symbol}")
 def remove_from_watchlist(symbol: str):

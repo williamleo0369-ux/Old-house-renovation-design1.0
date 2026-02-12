@@ -56,7 +56,12 @@
                     <!-- Sidebar Dashboard -->
                     <div class="lg:col-span-1 space-y-4">
                         <div class="dashboard-card rounded-lg p-4">
-                            <h3 class="text-lg font-bold mb-4 text-blue-400">关注列表</h3>
+                            <div class="flex justify-between items-center mb-4">
+                                <h3 class="text-lg font-bold text-blue-400">关注列表</h3>
+                                <button @click="syncStrategies" class="text-xs bg-blue-600 hover:bg-blue-500 px-2 py-1 rounded transition">
+                                    🔄 同步策略
+                                </button>
+                            </div>
                             <div class="space-y-2">
                                 <div v-for="item in watchList" :key="item.symbol" 
                                      @click="fetchData(item.symbol)"
@@ -318,6 +323,17 @@
                     fetchWatchlist();
                 };
 
+                const syncStrategies = async () => {
+                    try {
+                        addLog("正在同步策略...");
+                        const res = await fetch('/api/watchlist/sync_strategies', { method: 'POST' });
+                        const data = await res.json();
+                        addLog(`同步完成: ${data.started.length} 个已启动, ${data.failed.length} 个失败`);
+                    } catch (e) {
+                        addLog("同步策略失败: " + e.message);
+                    }
+                };
+
                 const initChart = () => {
                     if (!chartContainer.value) return;
                     
@@ -496,7 +512,7 @@
                 return {
                     chartContainer, fetchData, currentSymbol, currentPrice, lastPrice,
                     gridUpper, gridLower, isRunning, logs, wxUid, 
-                    scrollTo, startStrategy, saveSettings,
+                    scrollTo, startStrategy, saveSettings, syncStrategies,
                     watchList, account, gridProgress,
                     marketType, searchInput, handleSearch, toggleWatchlist, isInWatchlist
                 };

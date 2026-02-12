@@ -90,3 +90,35 @@ class GridStrategy:
             "positions": self.positions,
             "balance": self.balance
         }
+
+def calculate_smart_grid_params(symbol):
+    """
+    Automatically calculate grid parameters based on recent history.
+    Strategy: 
+    1. Fetch 1 month history.
+    2. Upper Limit = Recent High * 1.05
+    3. Lower Limit = Recent Low * 0.95
+    Returns: (upper, lower) or None if failed
+    """
+    try:
+        ticker = yf.Ticker(symbol)
+        hist = ticker.history(period="1mo")
+        if hist.empty:
+            # Fallback for empty history (maybe new stock or error)
+            info = ticker.fast_info
+            current = info.last_price
+            if current:
+                return current * 1.1, current * 0.9
+            return None
+        
+        high = hist['High'].max()
+        low = hist['Low'].min()
+        
+        # Add some buffer
+        upper = high * 1.05
+        lower = low * 0.95
+        
+        return round(upper, 2), round(lower, 2)
+    except Exception as e:
+        logger.error(f"Failed to calculate smart params for {symbol}: {e}")
+        return None
