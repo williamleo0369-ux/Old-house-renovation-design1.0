@@ -111,27 +111,30 @@ CACHE_DURATION = 3600  # 1 hour
 
 def get_etf_realtime_price(symbol: str):
     """
-    Get real-time price for ETF using akshare (East Money source).
+    Get real-time price for ETF using akshare (Sina source).
     Symbol should be 6 digits (e.g., '510300').
     """
     global ETF_LIST_CACHE
     
     try:
-        # Check cache first
+        # Check cache first (1 min cache)
         if ETF_LIST_CACHE["data"] is not None and time.time() - ETF_LIST_CACHE["timestamp"] < 60:
-            # Short cache for price lookup optimization if we just fetched it
             df = ETF_LIST_CACHE["data"]
         else:
-            # Fetch all ETF spot data
-            # This returns a DataFrame with all ETFs. It's heavy but comprehensive.
-            df = ak.fund_etf_spot_em()
+            # Fetch all ETF spot data from Sina (Better reliability than EastMoney in some envs)
+            df = ak.fund_etf_category_sina(symbol="ETF基金")
             ETF_LIST_CACHE["data"] = df
             ETF_LIST_CACHE["timestamp"] = time.time()
         
         # Filter for the symbol
-        # Columns usually include: 代码, 名称, 最新价, 涨跌幅, ...
-        # '代码' column is string.
-        row = df[df['代码'] == symbol]
+        # Sina returns codes like 'sh518880', 'sz159998'. 
+        # We need to match '518880' inside 'sh518880'
+        
+        # Create a clean code column if not exists
+        if 'clean_code' not in df.columns:
+            df['clean_code'] = df['代码'].apply(lambda x: x.replace('sh', '').replace('sz', ''))
+            
+        row = df[df['clean_code'] == symbol]
         
         if not row.empty:
             price = float(row.iloc[0]['最新价'])
@@ -146,7 +149,7 @@ def get_etf_realtime_price(symbol: str):
                 "prev_close": prev_close,
                 "volume": float(row.iloc[0]['成交量']),
                 "currency": "CNY",
-                "source": "akshare"
+                "source": "akshare_sina"
             }
         else:
             return None
@@ -249,6 +252,7 @@ def calculate_atr(symbol: str, period: int = 20):
         return None
 
 NAME_CACHE = {}
+ETF_CACHE_POPULATED = False
 
 def get_cn_name(symbol):
     """
@@ -258,21 +262,53 @@ def get_cn_name(symbol):
         return NAME_CACHE[symbol]
     
     try:
-        # ETF (already handled in get_etf_realtime_price usually, but for completeness)
+        # ETF Handling (5xxxxx or 15xxxx)
         if symbol.startswith("5") or symbol.startswith("15"):
-             # We might rely on the other function, but let's leave it.
-             pass
+             global ETF_CACHE_POPULATED
+             if not ETF_CACHE_POPULATED:
+                 try:
+                     # Fetch all ETFs from Sina (Fast & Reliable)
+                     df = ak.fund_etf_category_sina(symbol="ETF基金")
+                     # df['代码'] is like 'sh518880', 'sz159998'
+                     for _, row in df.iterrows():
+                         raw_code = str(row['代码'])
+                         name = str(row['名称'])
+                         # Strip sh/sz prefix
+                         clean_code = raw_code.replace("sh", "").replace("sz", "")
+                         NAME_CACHE[clean_code] = name
+                     
+                     ETF_CACHE_POPULATED = True
+                     
+                     # Check again
+                     if symbol in NAME_CACHE:
+                         return NAME_CACHE[symbol]
+                 except Exception as e:
+                     print(f"ETF Name Fetch Error: {e}")
+                     # Fallback for common ones
+                     fallback_map = {
+                         "518880": "黄金ETF",
+                         "512100": "中证1000ETF", 
+                         "588000": "科创50ETF",
+                         "513100": "纳指ETF",
+                         "513050": "中概互联ETF"
+                     }
+                     if symbol in fallback_map:
+                         NAME_CACHE[symbol] = fallback_map[symbol]
+                         return fallback_map[symbol]
         
-        # Stock
-        df = ak.stock_individual_info_em(symbol=symbol)
-        # Filter where item == "股票简称"
-        name_row = df[df['item'] == "股票简称"]
-        if not name_row.empty:
-            name = name_row.iloc[0]['value']
-            NAME_CACHE[symbol] = name
-            return name
-    except:
+        # Stock Handling
+        else:
+            df = ak.stock_individual_info_em(symbol=symbol)
+            name_row = df[df['item'] == "股票简称"]
+            if not name_row.empty:
+                name = name_row.iloc[0]['value']
+                NAME_CACHE[symbol] = name
+                return name
+                
+    except Exception as e:
+        # print(f"Name fetch error for {symbol}: {e}")
         pass
+    
     return None
 
 def fetch_hybrid_data(symbol: str):
@@ -281,20 +317,29 @@ def fetch_hybrid_data(symbol: str):
     """
     # Fix suffixes for Yfinance
     yf_symbol = symbol
-    is_cn_code = symbol.isdigit() and len(symbol) == 6
+    
+    # Check if it is a CN code (either pure 6 digits or with .SS/.SZ suffix)
+    clean_symbol = symbol.split('.')[0]
+    is_cn_code = False
+    
+    if clean_symbol.isdigit() and len(clean_symbol) == 6:
+        is_cn_code = True
+        # If input was pure digits, we might need to add suffix for yfinance
+        if symbol.isdigit():
+             if clean_symbol.startswith('5') or clean_symbol.startswith('6'):
+                yf_symbol = f"{clean_symbol}.SS"
+             elif clean_symbol.startswith('0') or clean_symbol.startswith('3'):
+                yf_symbol = f"{clean_symbol}.SZ"
     
     if is_cn_code:
         # Special handling for ETFs (5xxxxx) -> Akshare
-        if symbol.startswith('5'):
-            etf_data = get_etf_realtime_price(symbol)
+        if clean_symbol.startswith('5'):
+            etf_data = get_etf_realtime_price(clean_symbol)
             if etf_data:
+                # Try to attach name if available
+                cn_name = get_cn_name(clean_symbol)
+                if cn_name: etf_data['name'] = cn_name
                 return etf_data
-        
-        # Suffix logic for yfinance fallback
-        if symbol.startswith('5') or symbol.startswith('6'):
-            yf_symbol = f"{symbol}.SS"
-        elif symbol.startswith('0') or symbol.startswith('3'):
-            yf_symbol = f"{symbol}.SZ"
             
     # Fetch from Yfinance
     try:
@@ -309,8 +354,8 @@ def fetch_hybrid_data(symbol: str):
             # Try to get a good name
             name = yf_symbol
             if is_cn_code:
-                # Try Akshare cache or fetch
-                cn_name = get_cn_name(symbol)
+                # Try Akshare cache or fetch using the clean 6-digit code
+                cn_name = get_cn_name(clean_symbol)
                 if cn_name:
                     name = cn_name
                 else:
@@ -337,7 +382,7 @@ def fetch_hybrid_data(symbol: str):
                 # Try name again
                 name = yf_symbol
                 if is_cn_code:
-                     cn_name = get_cn_name(symbol)
+                     cn_name = get_cn_name(clean_symbol)
                      if cn_name: name = cn_name
                 
                 return {
