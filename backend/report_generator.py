@@ -26,23 +26,38 @@ def generate_report_image(symbol, close_price, change_pct, open_price, high, low
         r = int(139 + (255 - 139) * (y / height)) # 139 is 0x8B
         draw.line([(0, y), (width, y)], fill=(r, 0, 0))
 
-    # Load Font (Try to load a system font, fallback to default)
+    # Load Font (Priority: Local bundled font -> System -> Fallback)
     try:
-        # MacOS path
-        title_font = ImageFont.truetype("/System/Library/Fonts/PingFang.ttc", 60)
-        text_font = ImageFont.truetype("/System/Library/Fonts/PingFang.ttc", 36)
-        small_font = ImageFont.truetype("/System/Library/Fonts/PingFang.ttc", 24)
+        # 1. Try Local Bundled Font (Best for portability/Render)
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        font_path = os.path.join(current_dir, "static", "fonts", "NotoSansSC-Bold.ttf")
+        
+        if os.path.exists(font_path):
+            title_font = ImageFont.truetype(font_path, 60)
+            text_font = ImageFont.truetype(font_path, 36)
+            small_font = ImageFont.truetype(font_path, 24)
+        else:
+            raise IOError("Local font not found")
+            
     except IOError:
         try:
-            # Linux/Container path (e.g., DejaVuSans)
-            title_font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 60)
-            text_font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 36)
-            small_font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 24)
+            # 2. MacOS System Font
+            title_font = ImageFont.truetype("/System/Library/Fonts/PingFang.ttc", 60)
+            text_font = ImageFont.truetype("/System/Library/Fonts/PingFang.ttc", 36)
+            small_font = ImageFont.truetype("/System/Library/Fonts/PingFang.ttc", 24)
         except IOError:
-            # Fallback
-            title_font = ImageFont.load_default()
-            text_font = ImageFont.load_default()
-            small_font = ImageFont.load_default()
+            try:
+                # 3. Linux/Container path (e.g., DejaVuSans - No Chinese support usually)
+                # Trying to find ANY Chinese font on Linux if possible
+                title_font = ImageFont.truetype("/usr/share/fonts/truetype/wqy/wqy-microhei.ttc", 60)
+                text_font = ImageFont.truetype("/usr/share/fonts/truetype/wqy/wqy-microhei.ttc", 36)
+                small_font = ImageFont.truetype("/usr/share/fonts/truetype/wqy/wqy-microhei.ttc", 24)
+            except IOError:
+                # 4. Last Resort (Will show boxes for Chinese)
+                print("Warning: No Chinese font found. Text may be garbled.")
+                title_font = ImageFont.load_default()
+                text_font = ImageFont.load_default()
+                small_font = ImageFont.load_default()
 
     # Draw Text
     draw.text((50, 50), f"今日战报: {symbol}", font=title_font, fill="white")
