@@ -61,7 +61,8 @@ class GridStrategy:
         for price_level in self.grids:
             if abs(current_price - price_level) / price_level < 0.005: # Within 0.5%
                 message += f" | Near Grid Level: {price_level:.2f}"
-                self.notifier.send(f"Stock {self.symbol} is near grid level {price_level:.2f}. Current: {current_price:.2f}", uid=self.notifier.uid)
+                # Removed 'uid' argument as it is already stored in self.notifier.uid and send() doesn't accept it as kwarg
+                self.notifier.send(f"Stock {self.symbol} is near grid level {price_level:.2f}. Current: {current_price:.2f}")
                 action = "ALERT"
                 near_grid = True
         
@@ -255,3 +256,13 @@ def calculate_smart_grid_params(symbol):
     except Exception as e:
         logger.error(f"Failed to calculate smart params for {symbol}: {e}")
         return None
+
+if __name__ == "__main__":
+    # Simple test to verify the module works
+    logging.basicConfig(level=logging.INFO)
+    print("Testing GridStrategy for 512100...")
+    strategy = GridStrategy("512100", 2.6, 2.4)
+    print(strategy.run())
+    
+    print("\nTesting Smart Params for 512100...")
+    print(calculate_smart_grid_params("512100"))

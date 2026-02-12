@@ -1,6 +1,7 @@
 from apscheduler.schedulers.background import BackgroundScheduler
 from quant_engine import GridStrategy
 import logging
+from feishu_integration import push_to_feishu_bitable
 
 logger = logging.getLogger(__name__)
 
@@ -36,5 +37,20 @@ def get_all_strategies_status():
 
 def start_scheduler():
     if not scheduler.running:
+        # Existing Grid Strategy Jobs
+        # (Managed dynamically by add_strategy)
+        
+        # New Feature: Daily Feishu Report at 15:05 Mon-Fri
+        scheduler.add_job(
+            push_to_feishu_bitable, 
+            'cron', 
+            day_of_week='mon-fri', 
+            hour=15, 
+            minute=5, 
+            id='feishu_daily_report',
+            replace_existing=True
+        )
+        logger.info("Added daily Feishu report job (15:05 Mon-Fri)")
+
         scheduler.start()
         logger.info("Scheduler started")

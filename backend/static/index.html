@@ -368,6 +368,39 @@
                         </div>
                     </div>
                 </div>
+                <!-- Generate Report Button -->
+                <div class="fixed bottom-24 right-8 z-40">
+                    <button @click="generateReport" class="bg-red-600 hover:bg-red-700 text-white font-bold py-3 px-4 rounded-full shadow-lg flex items-center transition transform hover:scale-105">
+                        <span class="mr-2">🚀</span> 生成今日战报
+                    </button>
+                </div>
+
+                <!-- AI News Ticker (Bottom Bar) -->
+                <div class="fixed bottom-0 left-0 w-full bg-black bg-opacity-90 border-t border-gray-800 z-50 h-10 flex items-center overflow-hidden">
+                    <div class="bg-blue-900 px-3 py-2 text-xs font-bold shrink-0 z-10">AI 参谋</div>
+                    <div class="ticker-wrap flex-grow">
+                         <div class="ticker">
+                             <span v-if="newsItems.length === 0" class="text-gray-500 mx-4">正在扫描市场情报...</span>
+                             <span v-for="(item, i) in newsItems" :key="i" class="ticker-item mx-8">
+                                 <span class="text-gray-400 text-xs mr-1">[{{ item.time }}]</span>
+                                 <span :class="item.sentiment === 'positive' ? 'text-red-400' : (item.sentiment === 'negative' ? 'text-green-400' : 'text-white')">
+                                     {{ item.content }}
+                                 </span>
+                             </span>
+                         </div>
+                    </div>
+                </div>
+
+                <style>
+                    .ticker-wrap { width: 100%; overflow: hidden; white-space: nowrap; }
+                    .ticker { display: inline-block; animation: ticker 60s linear infinite; }
+                    .ticker-item { display: inline-block; }
+                    @keyframes ticker {
+                        0% { transform: translateX(100%); }
+                        100% { transform: translateX(-100%); }
+                    }
+                </style>
+
             </div>
         </section>
 
@@ -534,6 +567,45 @@
                     const progress = ((currentPrice.value - gridLower.value) / range) * 100;
                     return Math.min(Math.max(progress, 0), 100);
                 });
+
+                const newsItems = ref([]);
+
+                const fetchNews = async () => {
+                    try {
+                        const res = await fetch('/api/market/news');
+                        if (res.ok) {
+                            newsItems.value = await res.json();
+                        }
+                    } catch (e) {
+                        console.error("News fetch error", e);
+                    }
+                };
+
+                const generateReport = async () => {
+                    addLog("正在生成今日战报...");
+                    try {
+                        // Use current symbol or default to 512100 as requested?
+                        // User asked for "Generate Report" button generally, but context implies for the current view or 512100.
+                        // Let's use currentSymbol if it's an ETF/Stock, otherwise 512100.
+                        const symbol = currentSymbol.value || "512100";
+                        
+                        const response = await fetch(`/api/report/generate?symbol=${symbol}`);
+                        if (!response.ok) throw new Error("生成失败");
+                        
+                        const blob = await response.blob();
+                        const url = window.URL.createObjectURL(blob);
+                        const a = document.createElement('a');
+                        a.href = url;
+                        a.download = `report_${symbol}_${new Date().toISOString().slice(0,10)}.png`;
+                        document.body.appendChild(a);
+                        a.click();
+                        window.URL.revokeObjectURL(url);
+                        addLog("战报已下载");
+                        confetti({ particleCount: 150, spread: 60 });
+                    } catch (e) {
+                        addLog("战报生成错误: " + e.message);
+                    }
+                };
 
                 let pollInterval = null;
 
@@ -876,10 +948,13 @@
                 };
 
                 onMounted(() => {
-                    console.log("QuantMonitor v2.1 - CDN Fix & ATR Grid");
+                    console.log("QuantMonitor v2.2 - Report & News");
                     initChart();
                     fetchMarketSentiment();
                     fetchSectorMovers();
+                    fetchNews(); // Initial fetch
+                    setInterval(fetchNews, 1800000); // Poll news every 30 mins
+                    
                     window.addEventListener('resize', () => {
                         if (chart.value && chartContainer.value) {
                             chart.value.applyOptions({ width: chartContainer.value.clientWidth, height: chartContainer.value.clientHeight });
@@ -902,7 +977,8 @@
                     marketType, searchInput, handleSearch, toggleWatchlist, isInWatchlist,
                     stockDetails, timeframe, setTimeframe,
                     gridBenchmark, gridRatio, updateGridFromRatio, applyAtrSuggestion,
-                    calcPrice, calcRate, maxShares, commission
+                    calcPrice, calcRate, maxShares, commission,
+                    generateReport, newsItems
                 };
             }
         }).mount('#app');

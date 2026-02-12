@@ -18,6 +18,95 @@ STOCK_LIST_CACHE = {
     "timestamp": 0
 }
 
+# Cache for News
+NEWS_CACHE = {
+    "data": [],
+    "timestamp": 0
+}
+
+def fetch_market_news(keywords=["科创50", "黄金"]):
+    """
+    Fetches market news and filters by keywords.
+    Uses Akshare's generic news or a simple scraper if Akshare is too heavy/limited.
+    For simplicity and reliability, we will mock this or use a simple RSS/API if available.
+    Akshare's stock_news_em is good but might be heavy.
+    
+    Let's use a simulated news fetcher for stability in this demo environment,
+    or try to fetch real headlines if possible.
+    """
+    global NEWS_CACHE
+    # Update every 30 mins (1800s)
+    if time.time() - NEWS_CACHE["timestamp"] < 1800 and NEWS_CACHE["data"]:
+        return NEWS_CACHE["data"]
+        
+    news_items = []
+    
+    try:
+        # Try fetching from EastMoney Main News via Akshare
+        # stock_info_global_cls usually gives 7x24 global news
+        # Columns: ['标题', '内容', '发布日期', '发布时间']
+        df = ak.stock_info_global_cls(symbol="全部")
+        
+        for _, row in df.iterrows():
+            title = str(row['标题']) if row['标题'] else ""
+            content = str(row['内容'])
+            # Combine title and content for keyword search
+            text = f"{title} {content}".strip()
+            
+            # Filter by keywords
+            matched = False
+            matched_kw = ""
+            for kw in keywords:
+                if kw in text:
+                    matched = True
+                    matched_kw = kw
+                    break
+            
+            if matched:
+                # Determine Sentiment (Simple Heuristic)
+                sentiment = "neutral"
+                if any(x in text for x in ["涨", "利好", "突破", "新高", "买入", "增持", "预增"]):
+                    sentiment = "positive"
+                elif any(x in text for x in ["跌", "利空", "破位", "新低", "卖出", "减持", "预减"]):
+                    sentiment = "negative"
+                
+                # Format time
+                time_val = row['发布时间']
+                time_str = time_val.strftime("%H:%M") if hasattr(time_val, 'strftime') else str(time_val)
+
+                # Use content if title is empty
+                display_text = title if title else content
+                if len(display_text) > 60:
+                    display_text = display_text[:60] + "..."
+
+                news_items.append({
+                    "time": time_str,
+                    "content": display_text,
+                    "sentiment": sentiment,
+                    "keyword": matched_kw
+                })
+        
+        # If no news found matching keywords, add generic market news or mock
+        if not news_items:
+             current_time = datetime.now().strftime("%H:%M")
+             news_items = [
+                 {"time": current_time, "content": "暂无关于'科创50'或'黄金'的最新快讯，市场情绪平稳。", "sentiment": "neutral"}
+             ]
+             
+        NEWS_CACHE["data"] = news_items[:10] # Keep top 10
+        NEWS_CACHE["timestamp"] = time.time()
+        
+    except Exception as e:
+        print(f"News fetch error: {e}")
+        # Fallback Mock
+        current_time = datetime.now().strftime("%H:%M")
+        NEWS_CACHE["data"] = [
+             {"time": current_time, "content": "系统消息: 新闻服务暂时不可用 (API Error)", "sentiment": "neutral"}
+        ]
+        
+    return NEWS_CACHE["data"]
+
+
 CACHE_DURATION = 3600  # 1 hour
 
 def get_etf_realtime_price(symbol: str):

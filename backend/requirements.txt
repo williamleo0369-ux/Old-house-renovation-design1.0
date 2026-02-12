@@ -8,3 +8,4 @@ akshare
 yfinance
 jinja2
 python-multipart
+Pillow

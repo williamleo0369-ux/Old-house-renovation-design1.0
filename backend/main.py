@@ -12,7 +12,9 @@ from concurrent.futures import ThreadPoolExecutor
 import yfinance as yf
 from scheduler import start_scheduler, add_strategy, get_all_strategies_status
 from quant_engine import calculate_smart_grid_params, MarketSentiment, PositionSizer, MarketScanner
-from market_data import fetch_hybrid_data, calculate_atr
+from market_data import fetch_hybrid_data, calculate_atr, fetch_market_news
+from report_generator import generate_report_image
+from fastapi.responses import Response
 
 app = FastAPI(title="Quant Analysis API")
 
@@ -275,6 +277,53 @@ def get_position_sizing(symbol: str, balance: float = 10000.0):
     if not res:
         raise HTTPException(status_code=400, detail="Calculation failed")
     return res
+
+@app.get("/api/market/news")
+def get_news():
+    """
+    Get latest market news (Sci-Tech 50, Gold)
+    """
+    return fetch_market_news()
+
+@app.get("/api/report/generate")
+def generate_daily_report(symbol: str = "512100"):
+    """
+    Generates a daily report image and returns it as a downloadable file.
+    """
+    try:
+        # Fetch latest data with fallback
+        # Use fetch_stock_data which has built-in simulation fallback if API fails
+        stock_info = fetch_stock_data(symbol)
+        
+        if not stock_info:
+            # Should not happen due to fallback, but just in case
+            raise HTTPException(status_code=404, detail="Symbol not found")
+        
+        close = stock_info['price']
+        change = stock_info['change_pct']
+        
+        # Estimate OHLC for the report if we only have current price
+        # (Since fetch_stock_data only returns price/change)
+        # We simulate OHLC around the current price for visualization
+        open_p = close / (1 + change/100)
+        high = max(close, open_p) * 1.01
+        low = min(close, open_p) * 0.99
+        
+        img_io = generate_report_image(
+            symbol, 
+            round(close, 2), 
+            round(change, 2), 
+            round(open_p, 2), 
+            round(high, 2), 
+            round(low, 2)
+        )
+        
+        return Response(content=img_io.getvalue(), media_type="image/png")
+    except Exception as e:
+        print(f"Report gen error: {e}")
+        # Return a simple error image or text instead of 500?
+        # For now, just raise 500 but at least we tried to use fallback data
+        raise HTTPException(status_code=500, detail=str(e))
 
 if __name__ == "__main__":
     uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
