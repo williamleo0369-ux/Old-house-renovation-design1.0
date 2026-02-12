@@ -190,7 +190,12 @@
 
                             <div class="flex justify-between items-center mb-2 px-2">
                                 <div class="flex items-center gap-2">
-                                    <div class="text-xl font-bold">{{ currentSymbol }}</div>
+                                    <div class="text-xl font-bold">
+                                        {{ stockDetails && stockDetails.name ? stockDetails.name : currentSymbol }}
+                                    </div>
+                                    <span v-if="stockDetails && stockDetails.name && stockDetails.name !== currentSymbol" class="text-sm text-gray-400">
+                                        ({{ currentSymbol }})
+                                    </span>
                                     <span class="text-sm text-gray-400">[{{ timeframe }}]</span>
                                     <button @click="toggleWatchlist" :class="isInWatchlist ? 'text-yellow-400' : 'text-gray-500'" class="hover:text-yellow-300 transition text-xl">
                                         ★

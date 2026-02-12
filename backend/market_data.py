@@ -248,6 +248,33 @@ def calculate_atr(symbol: str, period: int = 20):
         print(f"Error calculating ATR for {symbol}: {e}")
         return None
 
+NAME_CACHE = {}
+
+def get_cn_name(symbol):
+    """
+    Get Chinese name for a stock symbol using Akshare (Cached).
+    """
+    if symbol in NAME_CACHE:
+        return NAME_CACHE[symbol]
+    
+    try:
+        # ETF (already handled in get_etf_realtime_price usually, but for completeness)
+        if symbol.startswith("5") or symbol.startswith("15"):
+             # We might rely on the other function, but let's leave it.
+             pass
+        
+        # Stock
+        df = ak.stock_individual_info_em(symbol=symbol)
+        # Filter where item == "股票简称"
+        name_row = df[df['item'] == "股票简称"]
+        if not name_row.empty:
+            name = name_row.iloc[0]['value']
+            NAME_CACHE[symbol] = name
+            return name
+    except:
+        pass
+    return None
+
 def fetch_hybrid_data(symbol: str):
     """
     Smart router for data fetching.
@@ -279,10 +306,22 @@ def fetch_hybrid_data(symbol: str):
             prev_close = info.previous_close
             if price is None: raise ValueError("No price")
             
+            # Try to get a good name
+            name = yf_symbol
+            if is_cn_code:
+                # Try Akshare cache or fetch
+                cn_name = get_cn_name(symbol)
+                if cn_name:
+                    name = cn_name
+                else:
+                    # Fallback to yfinance info (might be slow/english)
+                    # We skip ticker.info call to keep it fast unless necessary
+                    pass
+            
             return {
                 "price": price,
                 "change_percent": ((price - prev_close) / prev_close) * 100,
-                "name": yf_symbol, # Name might need separate fetch
+                "name": name, 
                 "prev_close": prev_close,
                 "volume": info.last_volume,
                 "currency": info.currency,
@@ -294,10 +333,17 @@ def fetch_hybrid_data(symbol: str):
             if not hist.empty:
                 price = hist['Close'].iloc[-1]
                 prev_close = ticker.info.get('previousClose', price)
+                
+                # Try name again
+                name = yf_symbol
+                if is_cn_code:
+                     cn_name = get_cn_name(symbol)
+                     if cn_name: name = cn_name
+                
                 return {
                     "price": price,
                     "change_percent": ((price - prev_close) / prev_close) * 100,
-                    "name": yf_symbol,
+                    "name": name,
                     "prev_close": prev_close,
                     "volume": hist['Volume'].iloc[-1],
                     "currency": ticker.info.get('currency', 'USD'),

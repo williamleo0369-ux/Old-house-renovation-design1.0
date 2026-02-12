@@ -239,6 +239,7 @@ def get_stock_details(symbol: str):
     
     details = {
         "symbol": symbol,
+        "name": data.get("name", symbol) if data else symbol,
         "price": current_price,
         "prev_close": data['prev_close'] if data else current_price,
         "volume": data['volume'] if data else 0,
