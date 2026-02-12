@@ -69,23 +69,54 @@
                 </div>
 
                 <!-- Signal Dashboard (New) -->
-                <div v-if="positionSuggestion" class="mb-6 bg-gradient-to-r from-gray-800 to-gray-900 border border-gray-700 rounded-lg p-4 flex justify-between items-center shadow-lg">
-                    <div class="flex items-center space-x-4">
-                        <div class="bg-blue-600 rounded-full p-2">
-                            <span class="text-xl">💡</span>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+                    <!-- Position Suggestion -->
+                    <div v-if="positionSuggestion" class="bg-gradient-to-r from-gray-800 to-gray-900 border border-gray-700 rounded-lg p-4 shadow-lg">
+                        <div class="flex justify-between items-start">
+                            <div class="flex items-center space-x-3">
+                                <div class="bg-blue-600 rounded-full p-2">
+                                    <span class="text-xl">💡</span>
+                                </div>
+                                <div>
+                                    <div class="font-bold text-lg text-blue-300">智能仓位 ({{ positionSuggestion.symbol }})</div>
+                                    <div class="text-xs text-gray-400">基于波动率优化</div>
+                                </div>
+                            </div>
+                            <div class="text-right">
+                                <div class="text-xs text-gray-500">建议仓位</div>
+                                <div class="font-bold text-white text-lg">{{ positionSuggestion.suggested_shares }} 股</div>
+                            </div>
                         </div>
-                        <div>
-                            <div class="font-bold text-lg text-blue-300">智能仓位建议 ({{ positionSuggestion.symbol }})</div>
-                            <div class="text-sm text-gray-400">
-                                建议买入: <span class="text-white font-mono">{{ positionSuggestion.suggested_shares }}股</span> | 
-                                止损: <span class="text-red-400">{{ positionSuggestion.stop_loss }}</span> | 
-                                止盈: <span class="text-green-400">{{ positionSuggestion.take_profit }}</span>
+                        <div class="mt-4 grid grid-cols-3 gap-2 text-center text-sm">
+                            <div class="bg-gray-800 rounded p-1">
+                                <div class="text-gray-500 text-xs">止损</div>
+                                <div class="text-red-400">{{ positionSuggestion.stop_loss }}</div>
+                            </div>
+                            <div class="bg-gray-800 rounded p-1">
+                                <div class="text-gray-500 text-xs">入场</div>
+                                <div class="text-white">{{ positionSuggestion.entry_price }}</div>
+                            </div>
+                            <div class="bg-gray-800 rounded p-1">
+                                <div class="text-gray-500 text-xs">止盈</div>
+                                <div class="text-green-400">{{ positionSuggestion.take_profit }}</div>
                             </div>
                         </div>
                     </div>
-                    <div class="text-right">
-                        <div class="text-xs text-gray-500">风险金额</div>
-                        <div class="font-bold text-red-400">¥{{ positionSuggestion.risk_amount }}</div>
+
+                    <!-- Sector Movers -->
+                    <div class="bg-gray-800 border border-gray-700 rounded-lg p-4 shadow-lg">
+                        <h3 class="font-bold text-gray-300 mb-3 flex items-center">
+                            <span class="mr-2">🚀</span> 行业异动 (Top Movers)
+                        </h3>
+                        <div v-if="sectorMovers.length === 0" class="text-gray-500 text-sm animate-pulse">扫描中...</div>
+                        <div v-else class="space-y-2">
+                            <div v-for="sector in sectorMovers" :key="sector.name" class="flex justify-between items-center text-sm border-b border-gray-700 pb-1 last:border-0">
+                                <span class="text-gray-300">{{ sector.name }}</span>
+                                <span :class="sector.change >= 0 ? 'text-green-400' : 'text-red-400'">
+                                    {{ sector.change > 0 ? '+' : '' }}{{ sector.change }}%
+                                </span>
+                            </div>
+                        </div>
                     </div>
                 </div>
 
@@ -430,6 +461,18 @@
 
                 const marketSentiment = ref(null);
                 const positionSuggestion = ref(null);
+                const sectorMovers = ref([]);
+
+                const fetchSectorMovers = async () => {
+                    try {
+                        const res = await fetch(`/api/market/sectors?type=${marketType.value}`);
+                        if (res.ok) {
+                            sectorMovers.value = await res.json();
+                        }
+                    } catch (e) {
+                        console.error("Sector fetch failed", e);
+                    }
+                };
 
                 const fetchMarketSentiment = async () => {
                     try {
@@ -562,6 +605,7 @@
                 onMounted(() => {
                     initChart();
                     fetchMarketSentiment();
+                    fetchSectorMovers();
                     window.addEventListener('resize', () => {
                         if (chart.value && chartContainer.value) {
                             chart.value.applyOptions({ width: chartContainer.value.clientWidth, height: chartContainer.value.clientHeight });
@@ -580,7 +624,7 @@
                     chartContainer, fetchData, currentSymbol, currentPrice, lastPrice,
                     gridUpper, gridLower, isRunning, logs, wxUid, 
                     scrollTo, startStrategy, saveSettings, syncStrategies,
-                    watchList, account, gridProgress, marketSentiment, positionSuggestion,
+                    watchList, account, gridProgress, marketSentiment, positionSuggestion, sectorMovers,
                     marketType, searchInput, handleSearch, toggleWatchlist, isInWatchlist
                 };
             }

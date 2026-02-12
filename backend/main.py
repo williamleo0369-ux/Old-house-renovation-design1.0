@@ -9,7 +9,7 @@ import json
 import random
 import yfinance as yf
 from scheduler import start_scheduler, add_strategy, get_all_strategies_status
-from quant_engine import calculate_smart_grid_params, MarketSentiment, PositionSizer
+from quant_engine import calculate_smart_grid_params, MarketSentiment, PositionSizer, MarketScanner
 
 app = FastAPI(title="Quant Analysis API")
 
@@ -201,6 +201,10 @@ def start_strategy_endpoint(req: StrategyRequest):
 @app.get("/api/strategies")
 def get_strategies():
     return get_all_strategies_status()
+
+@app.get("/api/market/sectors")
+def get_market_sectors(type: str = "CN"):
+    return MarketScanner.scan(type)
 
 @app.get("/api/market/sentiment")
 def get_market_sentiment(type: str = "CN"):

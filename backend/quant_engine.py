@@ -91,6 +91,49 @@ class GridStrategy:
             "balance": self.balance
         }
 
+class MarketScanner:
+    """
+    Scans for sector movements using ETF proxies.
+    """
+    SECTORS = {
+        "CN": [
+            {"name": "科技 (Tech)", "symbol": "512660.SS"}, # Using proxies or major stocks
+            {"name": "消费 (Consumer)", "symbol": "000001.SS"}, # Proxy
+            {"name": "金融 (Finance)", "symbol": "601398.SS"}
+        ],
+        "US": [
+            {"name": "Tech (XLK)", "symbol": "XLK"},
+            {"name": "Finance (XLF)", "symbol": "XLF"},
+            {"name": "Health (XLV)", "symbol": "XLV"}
+        ]
+    }
+    
+    @staticmethod
+    def scan(market_type="CN"):
+        results = []
+        sectors = MarketScanner.SECTORS.get(market_type, MarketScanner.SECTORS["CN"])
+        
+        for sector in sectors:
+            try:
+                # Optimized: fetch only today's data
+                ticker = yf.Ticker(sector["symbol"])
+                hist = ticker.history(period="5d") # Get a few days to calc change
+                if len(hist) >= 2:
+                    curr = hist['Close'].iloc[-1]
+                    prev = hist['Close'].iloc[-2]
+                    pct_change = ((curr - prev) / prev) * 100
+                    results.append({
+                        "name": sector["name"],
+                        "change": round(pct_change, 2),
+                        "price": round(curr, 2)
+                    })
+            except:
+                continue
+                
+        # Sort by biggest gainers
+        results.sort(key=lambda x: x['change'], reverse=True)
+        return results
+
 class MarketSentiment:
     """
     Analyzes overall market risk (Red/Green light).
