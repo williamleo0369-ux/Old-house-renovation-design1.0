@@ -373,8 +373,10 @@
                     if (marketType.value === 'CN') {
                         // Auto-suffix for A-shares
                         if (/^\d{6}$/.test(symbol)) {
-                            if (symbol.startsWith('6')) symbol += '.SS';
-                            else symbol += '.SZ'; // Default to SZ for 0/3
+                            // 6xxxx = SH Main, 5xxxx = SH ETF -> .SS
+                            if (symbol.startsWith('6') || symbol.startsWith('5')) symbol += '.SS';
+                            // 0xxxx = SZ Main, 3xxxx = ChiNext, 1xxxx = SZ ETF -> .SZ
+                            else symbol += '.SZ'; 
                         }
                     } else if (marketType.value === 'HK') {
                         if (/^\d+$/.test(symbol)) {
