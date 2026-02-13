@@ -114,6 +114,7 @@
                             <div v-for="sector in sectorMovers" :key="sector.name" class="flex justify-between items-center text-sm border-b border-gray-700 pb-1 last:border-0">
                                 <span class="text-gray-300">{{ sector.name }}</span>
                                 <span :class="sector.change >= 0 ? 'text-green-400' : 'text-red-400'">
+                                    <span class="mr-1">{{ sector.change > 0 ? '↑' : (sector.change < 0 ? '↓' : '') }}</span>
                                     {{ sector.change > 0 ? '+' : '' }}{{ sector.change }}%
                                 </span>
                             </div>
@@ -154,6 +155,7 @@
                                         </div>
                                     </div>
                                     <div :class="item.change_pct >= 0 ? 'text-green-400' : 'text-red-400'">
+                                        <span class="mr-1">{{ item.change_pct > 0 ? '↑' : (item.change_pct < 0 ? '↓' : '') }}</span>
                                         {{ typeof item.price === 'number' ? item.price.toFixed(3) : item.price }}
                                     </div>
                                 </div>
@@ -217,6 +219,7 @@
                                         <button @click="setTimeframe('1M')" :class="['px-2 py-0.5 rounded text-xs transition', timeframe === '1M' ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white']">月K</button>
                                     </div>
                                     <div class="text-2xl font-mono" :class="currentPrice >= lastPrice ? 'text-green-400' : 'text-red-400'">
+                                        <span class="mr-1">{{ currentPrice > lastPrice ? '↑' : (currentPrice < lastPrice ? '↓' : '') }}</span>
                                         {{ currentPrice.toFixed(3) }}
                                         <span class="text-sm ml-2">{{ ((currentPrice - lastPrice)/lastPrice * 100).toFixed(3) }}%</span>
                                     </div>
