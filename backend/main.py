@@ -14,6 +14,7 @@ from scheduler import start_scheduler, add_strategy, get_all_strategies_status
 from quant_engine import calculate_smart_grid_params, MarketSentiment, PositionSizer, MarketScanner
 from market_data import fetch_hybrid_data, calculate_atr, fetch_market_news
 from report_generator import generate_report_image
+from feishu_integration import feishu_integrator
 from fastapi.responses import Response
 
 app = FastAPI(title="Quant Analysis API")
@@ -32,13 +33,42 @@ start_scheduler()
 WATCHLIST_FILE = "watchlist.json"
 
 def load_watchlist_file():
+    # Priority: Local file -> Feishu
+    local_list = []
     if os.path.exists(WATCHLIST_FILE):
         try:
             with open(WATCHLIST_FILE, "r") as f:
-                return json.load(f)
+                local_list = json.load(f)
         except:
-            return []
-    return []
+            pass
+            
+    # Try loading from Feishu on startup/init
+    # We can merge them or just use Feishu if available.
+    # For now, let's just append any unique ones from Feishu to local file
+    # But this function is called frequently, so we shouldn't call Feishu every time.
+    # We should have a separate init function or cache.
+    return local_list
+
+def init_watchlist_from_feishu():
+    """
+    Called on startup to sync Feishu watchlist to local.
+    """
+    feishu_list = feishu_integrator.load_favorites_from_feishu()
+    if feishu_list:
+        print(f"Loaded {len(feishu_list)} symbols from Feishu.")
+        current = load_watchlist_file()
+        updated = False
+        for sym in feishu_list:
+            if sym not in current:
+                current.append(sym)
+                updated = True
+        
+        if updated:
+            save_watchlist_file(current)
+            print("Merged Feishu watchlist into local storage.")
+
+# Initialize on startup
+init_watchlist_from_feishu()
 
 def save_watchlist_file(watchlist):
     with open(WATCHLIST_FILE, "w") as f:
@@ -119,6 +149,17 @@ def add_to_watchlist(req: WatchlistRequest):
     if req.symbol not in current:
         current.append(req.symbol)
         save_watchlist_file(current)
+        
+        # Sync to Feishu Webhook
+        # We need to fetch the name first to send it
+        # Or just send symbol and let Feishu handle it?
+        # Let's try to get a name if possible
+        try:
+             # Quick fetch or cache check?
+             # Just send symbol is safer for speed
+             feishu_integrator.sync_to_webhook(req.symbol, action="add")
+        except Exception as e:
+             print(f"Feishu webhook failed: {e}")
     
     # Auto-start strategy for the new symbol
     try:
@@ -141,7 +182,19 @@ def sync_strategies():
     failed = []
     default_uid = os.environ.get("WX_UID", "default_user")
     
+    # Also trigger Feishu Sync for all items (Bulk update?)
+    # Or just sync the fact that we are running strategies?
+    # The user said "Sync Strategies" ... "sync call Webhook to write new code".
+    # Maybe they mean if I found new codes locally (or from elsewhere), push them to Feishu?
+    # Or simply push the current list to ensure Feishu is up to date.
+    
     for symbol in current:
+        # Sync to Feishu (optional, to ensure consistency)
+        try:
+            feishu_integrator.sync_to_webhook(symbol, action="sync")
+        except:
+            pass
+
         try:
             params = calculate_smart_grid_params(symbol)
             if params:
