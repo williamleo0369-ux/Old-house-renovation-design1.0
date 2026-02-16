@@ -2,9 +2,18 @@
 import akshare as ak
 import yfinance as yf
 import pandas as pd
+import requests
+
+session = requests.Session()
+
+yf.set_tz_cache_location(".yf_cache") # Optional: cache timezone info
 from datetime import datetime, timedelta
 import concurrent.futures
 import time
+import logging
+
+# Configure logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 # Cache for ETF list to avoid frequent heavy API calls
 ETF_LIST_CACHE = {
@@ -97,7 +106,7 @@ def fetch_market_news(keywords=["科创50", "黄金"]):
         NEWS_CACHE["timestamp"] = time.time()
         
     except Exception as e:
-        print(f"News fetch error: {e}")
+        logging.error(f"News fetch error: {e}", exc_info=True)
         # Fallback Mock
         current_time = datetime.now().strftime("%H:%M")
         NEWS_CACHE["data"] = [
@@ -152,10 +161,33 @@ def get_etf_realtime_price(symbol: str):
                 "source": "akshare_sina"
             }
         else:
-            return None
+            # Fallback to a more comprehensive but heavier source if not found
+            logging.warning(f"Symbol {symbol} not found in Sina ETF list, trying EastMoney fallback.")
+            try:
+                df_em = ak.stock_zh_a_spot_em()
+                row_em = df_em[df_em["代码"] == symbol]
+                if not row_em.empty:
+                    price = float(row_em.iloc[0]['最新价'])
+                    change_percent = float(row_em.iloc[0]['涨跌幅'])
+                    name = row_em.iloc[0]['名称']
+                    prev_close = float(row_em.iloc[0]['昨收'])
+                    return {
+                        "price": price,
+                        "change_percent": change_percent,
+                        "name": name,
+                        "prev_close": prev_close,
+                        "volume": float(row_em.iloc[0]['成交量']),
+                        "currency": "CNY",
+                        "source": "akshare_em_fallback"
+                    }
+                else:
+                    return None # Not found in fallback either
+            except Exception as e_em:
+                logging.error(f"EastMoney fallback failed for {symbol}: {e_em}", exc_info=True)
+                return None
             
     except Exception as e:
-        print(f"Error fetching ETF data for {symbol}: {e}")
+        logging.error(f"Error fetching ETF data for {symbol}: {e}", exc_info=True)
         return None
 
 def get_cn_stock_realtime_price(symbol: str):
@@ -172,7 +204,7 @@ def get_cn_stock_realtime_price(symbol: str):
         # But let's try to use akshare for consistent CN data if requested.
         pass
     except Exception as e:
-        print(e)
+        logging.error(f"Error in get_cn_stock_realtime_price for {symbol}: {e}", exc_info=True)
     return None
 
 def calculate_atr(symbol: str, period: int = 20):
@@ -205,7 +237,7 @@ def calculate_atr(symbol: str, period: int = 20):
                         "最高": "High", "最低": "Low", "成交量": "Volume"
                     })
             except Exception as e:
-                print(f"Akshare history failed for {symbol}: {e}")
+                logging.error(f"Akshare history failed for {symbol}: {e}", exc_info=True)
                 
         # Fallback to yfinance if not CN or Akshare failed
         if df is None:
@@ -214,7 +246,7 @@ def calculate_atr(symbol: str, period: int = 20):
                 if symbol.startswith('6') or symbol.startswith('5'): yf_symbol += '.SS'
                 else: yf_symbol += '.SZ'
             
-            ticker = yf.Ticker(yf_symbol)
+            ticker = yf.Ticker(yf_symbol, session=session)
             df = ticker.history(period="3mo") # Get enough data
             df = df.reset_index()
         
@@ -248,7 +280,7 @@ def calculate_atr(symbol: str, period: int = 20):
         }
         
     except Exception as e:
-        print(f"Error calculating ATR for {symbol}: {e}")
+        logging.error(f"Error calculating ATR for {symbol}: {e}", exc_info=True)
         return None
 
 NAME_CACHE = {}
@@ -283,7 +315,7 @@ def get_cn_name(symbol):
                      if symbol in NAME_CACHE:
                          return NAME_CACHE[symbol]
                  except Exception as e:
-                     print(f"ETF Name Fetch Error: {e}")
+                     logging.error(f"ETF Name Fetch Error: {e}", exc_info=True)
                      # Fallback for common ones
                      fallback_map = {
                          "518880": "黄金ETF",
@@ -306,7 +338,7 @@ def get_cn_name(symbol):
                 return name
                 
     except Exception as e:
-        # print(f"Name fetch error for {symbol}: {e}")
+        logging.warning(f"Name fetch error for {symbol}: {e}", exc_info=True)
         pass
     
     return None
@@ -332,8 +364,8 @@ def fetch_hybrid_data(symbol: str):
                 yf_symbol = f"{clean_symbol}.SZ"
     
     if is_cn_code:
-        # Special handling for ETFs (5xxxxx) -> Akshare
-        if clean_symbol.startswith('5'):
+        # Special handling for ETFs (5xxxxx or 15xxxx) -> Akshare
+        if clean_symbol.startswith('5') or clean_symbol.startswith('15'):
             etf_data = get_etf_realtime_price(clean_symbol)
             if etf_data:
                 # Try to attach name if available
@@ -343,48 +375,40 @@ def fetch_hybrid_data(symbol: str):
             
     # Fetch from Yfinance
     try:
-        ticker = yf.Ticker(yf_symbol)
-        # Use fast_info for speed
-        info = ticker.fast_info
+        ticker = yf.Ticker(yf_symbol, session=session)
+        
+        # First, try fast_info for speed
         try:
+            info = ticker.fast_info
             price = info.last_price
             prev_close = info.previous_close
-            if price is None: raise ValueError("No price")
-            
-            # Try to get a good name
-            name = yf_symbol
-            if is_cn_code:
-                # Try Akshare cache or fetch using the clean 6-digit code
-                cn_name = get_cn_name(clean_symbol)
-                if cn_name:
-                    name = cn_name
-                else:
-                    # Fallback to yfinance info (might be slow/english)
-                    # We skip ticker.info call to keep it fast unless necessary
-                    pass
-            
-            return {
-                "price": price,
-                "change_percent": ((price - prev_close) / prev_close) * 100,
-                "name": name, 
-                "prev_close": prev_close,
-                "volume": info.last_volume,
-                "currency": info.currency,
-                "source": "yfinance"
-            }
-        except:
-            # Fallback to history
-            hist = ticker.history(period="1d")
-            if not hist.empty:
+
+            if price is not None and prev_close is not None:
+                name = get_cn_name(clean_symbol) if is_cn_code else yf_symbol
+                if not name: name = yf_symbol
+
+                return {
+                    "price": price,
+                    "change_percent": ((price - prev_close) / prev_close) * 100,
+                    "name": name,
+                    "prev_close": prev_close,
+                    "volume": info.last_volume,
+                    "currency": info.currency,
+                    "source": "yfinance_fast"
+                }
+        except Exception as e_fast:
+            logging.warning(f"Yfinance fast_info failed for {yf_symbol}, trying history. Error: {e_fast}")
+
+        # Fallback to history if fast_info fails or has incomplete data
+        try:
+            hist = ticker.history(period="2d") # Fetch 2 days to ensure we have prev_close
+            if not hist.empty and len(hist) >= 2:
                 price = hist['Close'].iloc[-1]
-                prev_close = ticker.info.get('previousClose', price)
+                prev_close = hist['Close'].iloc[-2]
                 
-                # Try name again
-                name = yf_symbol
-                if is_cn_code:
-                     cn_name = get_cn_name(clean_symbol)
-                     if cn_name: name = cn_name
-                
+                name = get_cn_name(clean_symbol) if is_cn_code else yf_symbol
+                if not name: name = yf_symbol
+
                 return {
                     "price": price,
                     "change_percent": ((price - prev_close) / prev_close) * 100,
@@ -394,6 +418,12 @@ def fetch_hybrid_data(symbol: str):
                     "currency": ticker.info.get('currency', 'USD'),
                     "source": "yfinance_hist"
                 }
+        except Exception as e_hist:
+            # This is where the TLS error was happening
+            logging.error(f"Yfinance history() failed for {yf_symbol}: {e_hist}", exc_info=True)
+            return None # Critical failure for this symbol
+
     except Exception as e:
-        print(f"Yfinance failed for {yf_symbol}: {e}")
+        # Catch any other unexpected errors during Ticker initialization etc.
+        logging.error(f"Overall Yfinance failed for {yf_symbol}: {e}", exc_info=True)
         return None

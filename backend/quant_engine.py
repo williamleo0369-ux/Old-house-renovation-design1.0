@@ -16,6 +16,8 @@ class GridStrategy:
         self.balance = initial_balance
         self.positions = 0
         self.current_price = None
+        self.trade_count = 0
+        self.total_profit = 0.0
         self.setup_grids()
         self.notifier = WeChatNotifier()
 
@@ -88,7 +90,9 @@ class GridStrategy:
             "grids": self.grids,
             "current_price": price,
             "positions": self.positions,
-            "balance": self.balance
+            "balance": self.balance,
+            "trade_count": self.trade_count,
+            "total_profit": self.total_profit
         }
 
 class MarketScanner:

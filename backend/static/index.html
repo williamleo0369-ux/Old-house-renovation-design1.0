@@ -1,999 +1,701 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>量化分析平台</title>
-    <!-- Use local static files for stability -->
-    <script src="/static/js/vue.global.js"></script>
-    <link href="https://cdn.staticfile.org/tailwindcss/2.2.19/tailwind.min.css" rel="stylesheet">
-    <script src="/static/js/lightweight-charts.js"></script>
-    <script src="/static/js/tsparticles.confetti.bundle.min.js"></script>
-    <script src="/static/js/tsparticles.bundle.min.js"></script>
+    <title>量化投研平台</title>
+    <script src="https://unpkg.com/vue@3.2.36/dist/vue.global.js"></script>
+    <script src="https://unpkg.com/lightweight-charts/dist/lightweight-charts.standalone.production.js"></script>
+    <script src="https://cdn.plot.ly/plotly-3.3.1.min.js"></script>
     <style>
-        body { margin: 0; overflow-x: hidden; background-color: #1a202c; color: white; }
-        .chart-container { width: 100%; height: 500px; position: relative; }
-        .section { min-height: 100vh; padding: 2rem; display: flex; flex-direction: column; justify-content: center; }
-        .fade-enter-active, .fade-leave-active { transition: opacity 0.5s; }
-        .fade-enter-from, .fade-leave-to { opacity: 0; }
-        #particles-js { position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: -1; }
+        :root {
+            --sidebar-width: 260px;
+            --header-height: 60px;
+            --bg-color: #f0f2f5;
+            --sidebar-bg: #ffffff;
+            --content-bg: #ffffff;
+            --text-color: #333;
+            --text-color-secondary: #666;
+            --border-color: #e5e7eb;
+            --accent-color: #1E5ED2;
+            --accent-color-light: #EBF5FF;
+            --price-up-color: #059669;
+            --price-down-color: #F6353F;
+        }
+
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            display: flex;
+        }
+
+        #app {
+            display: flex;
+            width: 100vw;
+            height: 100vh;
+        }
+
+        .sidebar {
+            width: var(--sidebar-width);
+            background-color: var(--sidebar-bg);
+            border-right: 1px solid var(--border-color);
+            display: flex;
+            flex-direction: column;
+            padding: 20px 0;
+            transition: width 0.3s;
+            flex-shrink: 0;
+            overflow-y: auto;
+        }
         
-        /* Dashboard Styles */
-        .dashboard-card { background: rgba(31, 41, 55, 0.7); backdrop-filter: blur(10px); border: 1px solid rgba(75, 85, 99, 0.4); }
-        .grid-line-label { font-size: 0.75rem; color: #9ca3af; }
+        .sidebar-header {
+            padding: 0 20px 20px 20px;
+            font-size: 20px;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+        }
+
+        .sidebar-header .logo {
+            width: 32px;
+            height: 32px;
+            margin-right: 10px;
+            background-color: var(--accent-color);
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .sidebar-header .logo svg {
+            width: 20px;
+            height: 20px;
+            stroke: white;
+        }
+
+        .nav-menu {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+            flex-grow: 1;
+        }
+
+        .nav-item a {
+            display: flex;
+            align-items: center;
+            padding: 12px 20px;
+            text-decoration: none;
+            color: var(--text-color-secondary);
+            font-size: 15px;
+            font-weight: 500;
+            border-left: 3px solid transparent;
+            transition: all 0.2s ease;
+        }
+
+        .nav-item a:hover {
+            background-color: var(--bg-color);
+        }
+
+        .nav-item.active a {
+            color: var(--accent-color);
+            background-color: var(--accent-color-light);
+            border-left-color: var(--accent-color);
+        }
+
+        .nav-item .icon {
+            margin-right: 15px;
+            width: 20px;
+            height: 20px;
+        }
+
+        .main-container {
+            flex-grow: 1;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        .app-header {
+            height: var(--header-height);
+            border-bottom: 1px solid var(--border-color);
+            display: flex;
+            align-items: center;
+            padding: 0 24px;
+            flex-shrink: 0;
+            background-color: var(--content-bg);
+        }
+        
+        .app-header h2 {
+            margin: 0;
+            font-size: 20px;
+            font-weight: 600;
+        }
+
+        .main-content {
+            flex-grow: 1;
+            padding: 24px;
+            overflow-y: auto;
+        }
+
+        .price-up { color: var(--price-up-color); }
+        .price-down { color: var(--price-down-color); }
+
+        .placeholder-view {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100%;
+            flex-direction: column;
+            text-align: center;
+        }
+        .placeholder-view .icon {
+            width: 80px;
+            height: 80px;
+            color: #d1d5db;
+            margin-bottom: 20px;
+        }
+        .placeholder-view h3 {
+            font-size: 24px;
+            color: var(--text-color);
+            margin: 0;
+        }
+        .placeholder-view p {
+            font-size: 16px;
+            color: var(--text-color-secondary);
+        }
+
+
+        /* Market Analysis Styles */
+        .analysis-grid { display: flex; flex-direction: column; height: 100%; gap: 16px; }
+        .analysis-header { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 16px; }
+        .search-bar { display: flex; gap: 8px; }
+        .search-bar input { padding: 8px 12px; border: 1px solid var(--border-color); border-radius: 6px; font-size: 14px; }
+        .search-bar button { padding: 8px 16px; background-color: var(--accent-color); color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 14px; }
+        .stock-info { display: flex; align-items: baseline; gap: 16px; }
+        .stock-name h2 { margin: 0; font-size: 24px; }
+        .stock-name span { font-size: 14px; color: var(--text-color-secondary); }
+        .stock-price { font-size: 28px; font-weight: 600; }
+        .stock-change { display: flex; flex-direction: column; font-size: 14px; }
+        .interval-tabs { display: flex; }
+        .interval-tabs button { padding: 6px 12px; border: 1px solid var(--border-color); background-color: transparent; cursor: pointer; font-size: 14px; border-radius: 4px; margin-right: 8px; }
+        .interval-tabs button.active { background-color: var(--accent-color-light); color: var(--accent-color); border-color: var(--accent-color); }
+        #chart-container { width: 100%; flex-grow: 1; min-height: 300px; }
+
+        /* Intelligence Styles */
+        #intelligence-container { border: 1px solid var(--border-color); border-radius: 8px; background-color: #fff; margin-top: 16px; }
+        .intelligence-header { padding: 12px 16px; cursor: pointer; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border-color); }
+        .intelligence-header h3 { margin: 0; font-size: 16px; }
+        .intelligence-content-wrapper { padding: 16px; }
+        .intelligence-content { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; align-items: start; }
+        .intelligence-column { padding: 16px; border-radius: 6px; }
+        .logic-column { background-color: var(--accent-color-light); }
+        .emotion-column { transition: background-color 0.3s; }
+        .intelligence-column h4 { margin-top: 0; border-bottom: 1px solid var(--border-color); padding-bottom: 8px; margin-bottom: 8px; }
+        .pulse-dashboard { margin-bottom: 16px; }
+        .pulse-bar-container { width: 100%; background-color: var(--price-down-color); border-radius: 4px; overflow: hidden; }
+        .pulse-bar { height: 10px; background-color: var(--price-up-color); transition: width 0.5s; }
+        .pulse-labels { display: flex; justify-content: space-between; font-size: 12px; color: var(--text-color-secondary); margin-top: 4px; }
+        .pulse-score { text-align: center; margin-top: 8px; font-weight: 600; }
+
+        /* Backtesting Styles */
+        .backtest-view { display: grid; grid-template-columns: 320px 1fr; gap: 24px; height: 100%; }
+        .backtest-config { background-color: var(--content-bg); border-radius: 8px; padding: 20px; border: 1px solid var(--border-color); }
+        .backtest-results { display: flex; flex-direction: column; gap: 24px; }
+        .backtest-config h3 { margin-top: 0; }
+        .form-group { margin-bottom: 16px; }
+        .form-group label { display: block; font-size: 14px; font-weight: 500; margin-bottom: 6px; }
+        .form-group input, .form-group textarea { width: 100%; padding: 8px 12px; border: 1px solid var(--border-color); border-radius: 6px; font-size: 14px; box-sizing: border-box; }
+        .run-backtest-btn { width: 100%; padding: 10px; background-color: var(--accent-color); color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 16px; }
+        .metric-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 20px; }
+        .metric-card { background-color: var(--content-bg); border-radius: 8px; padding: 20px; border: 1px solid var(--border-color); text-align: center; }
+        .metric-card h4 { margin: 0 0 8px 0; font-size: 14px; color: var(--text-color-secondary); }
+        .metric-card .value { font-size: 24px; font-weight: 600; color: var(--accent-color); }
+        .metric-card .value.up { color: var(--price-up-color); }
+        .metric-card .value.down { color: var(--price-down-color); }
+        #backtest-chart-container { flex-grow: 1; background-color: var(--content-bg); border-radius: 8px; border: 1px solid var(--border-color); }
     </style>
 </head>
 <body>
     <div id="app">
-        <!-- Particles Background -->
-        <div id="particles-js"></div>
+        <div class="sidebar">
+            <div class="sidebar-header">
+                <div class="logo">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M9.75 3.104v5.714a2.25 2.25 0 01-.659 1.591L5 14.5M9.75 3.104c.251.042.505.042.752 0L14.25 2.25c.251-.042.505-.042.752 0m-5.25 0V1.5c0-.414.336-.75.75-.75h3.5c.414 0 .75.336.75.75v1.604m-4.5 0c-.251.042-.505.042-.752 0m0 0c-.251.042-.505.042-.752 0m-7.5 5.25h15m-15 0c-.251.042-.505.042-.752 0m0 0c-.251.042-.505.042-.752 0M3 10.5v5.714c0 .828.672 1.5 1.5 1.5h3.5c.828 0 1.5-.672 1.5-1.5V10.5m-6 0c-.251.042-.505.042-.752 0m0 0c-.251.042-.505.042-.752 0m15-5.25h-15m15 0c.251.042.505.042.752 0m0 0c.251.042.505.042.752 0M21 10.5v5.714c0 .828-.672 1.5-1.5 1.5h-3.5c-.828 0-1.5-.672-1.5-1.5V10.5m6 0c.251.042.505.042.752 0m0 0c.251.042.505.042.752 0" />
+                    </svg>
+                </div>
+                <span>智能投研平台</span>
+            </div>
+            <ul class="nav-menu">
+                <li v-for="item in menuItems" :key="item.id" 
+                    :class="{ 'nav-item': true, 'active': currentView === item.id }"
+                    @click="changeView(item.id)">
+                    <a href="#">
+                        <span class="icon" v-html="item.icon"></span>
+                        <span>{{ item.name }}</span>
+                    </a>
+                </li>
+            </ul>
+        </div>
 
-        <!-- Header -->
-        <nav class="fixed top-0 w-full bg-gray-900 bg-opacity-80 backdrop-blur-md z-50 p-4 border-b border-gray-700">
-            <div class="container mx-auto flex justify-between items-center">
-                <div class="flex items-center space-x-4">
-                    <h1 class="text-2xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-blue-400 to-purple-500">
-                        QuantVisual Monitor
-                    </h1>
-                    <!-- Risk Traffic Light -->
-                    <div v-if="marketSentiment" class="flex items-center space-x-2 px-3 py-1 rounded-full bg-gray-800 border border-gray-600">
-                        <span class="text-xs text-gray-400">市场风向:</span>
-                        <div class="w-3 h-3 rounded-full" :class="{
-                            'bg-green-500 shadow-[0_0_10px_rgba(34,197,94,0.8)]': marketSentiment.color === 'green',
-                            'bg-yellow-500 shadow-[0_0_10px_rgba(234,179,8,0.8)]': marketSentiment.color === 'yellow',
-                            'bg-red-500 shadow-[0_0_10px_rgba(239,68,68,0.8)]': marketSentiment.color === 'red'
-                        }"></div>
-                        <span class="text-xs font-bold" :class="{
-                            'text-green-400': marketSentiment.color === 'green',
-                            'text-yellow-400': marketSentiment.color === 'yellow',
-                            'text-red-400': marketSentiment.color === 'red'
-                        }">{{ marketSentiment.score }}分</span>
+        <div class="main-container">
+            <div class="app-header">
+                <h2>{{ currentViewName }}</h2>
+            </div>
+            <div class="main-content">
+                <!-- Market Analysis View -->
+                <div v-if="currentView === 'marketAnalysis'" class="analysis-grid">
+                    <div class="analysis-header">
+                        <div class="stock-info">
+                            <div class="stock-name">
+                                <h2 v-if="stockDetails.name">{{ stockDetails.name }}</h2>
+                                <span v-if="stockDetails.symbol">{{ stockDetails.symbol }}</span>
+                            </div>
+                            <div v-if="stockDetails.current_price" class="stock-price" :class="priceChangePercent >= 0 ? 'price-up' : 'price-down'">
+                                {{ stockDetails.current_price?.toFixed(2) }}
+                            </div>
+                            <div v-if="stockDetails.price_change" class="stock-change" :class="priceChangePercent >= 0 ? 'price-up' : 'price-down'">
+                                <span>{{ stockDetails.price_change?.toFixed(2) }}</span>
+                                <span>{{ priceChangePercent?.toFixed(2) }}%</span>
+                            </div>
+                        </div>
+                        <div class="search-bar">
+                            <input type="text" v-model="searchSymbol" @keyup.enter="changeSymbol" placeholder="输入股票/ETF代码">
+                            <button @click="changeSymbol">查询</button>
+                        </div>
+                    </div>
+                    <div class="interval-tabs">
+                        <button @click="changeInterval('hourly')" :class="{ active: selectedInterval === 'hourly' }">时</button>
+                        <button @click="changeInterval('daily')" :class="{ active: selectedInterval === 'daily' }">日</button>
+                        <button @click="changeInterval('weekly')" :class="{ active: selectedInterval === 'weekly' }">周</button>
+                        <button @click="changeInterval('monthly')" :class="{ active: selectedInterval === 'monthly' }">月</button>
+                    </div>
+                    <div id="chart-container"></div>
+                    <div id="intelligence-container" v-if="intelligentAnalysis">
+                        <div class="intelligence-header" @click="intelligenceExpanded = !intelligenceExpanded">
+                            <h3>实时情报对冲</h3>
+                            <span>{{ intelligenceExpanded ? '收起' : '展开' }}</span>
+                        </div>
+                        <div v-show="intelligenceExpanded" class="intelligence-content-wrapper">
+                            <div class="pulse-dashboard">
+                                <div class="pulse-labels">
+                                    <span>机构看点</span>
+                                    <span>散户槽点</span>
+                                </div>
+                                <div class="pulse-bar-container">
+                                    <div class="pulse-bar" :style="{ width: pulseWidth }"></div>
+                                </div>
+                                <div class="pulse-score">
+                                    情绪评分: {{ intelligentAnalysis.score?.toFixed(2) }}
+                                </div>
+                            </div>
+                            <div class="intelligence-content">
+                                <div class="intelligence-column logic-column">
+                                    <h4>机构看点 (Logic)</h4>
+                                    <p v-if="isFetchingIntelligentAnalysis">加载中...</p>
+                                    <p v-else-if="intelligentAnalysis.logic">{{ intelligentAnalysis.logic }}</p>
+                                    <p v-else>暂无数据</p>
+                                </div>
+                                <div class="intelligence-column emotion-column" :style="{ backgroundColor: intelligentAnalysis.score < -0.5 ? 'rgba(246, 53, 63, 0.1)' : '' }">
+                                    <h4>散户槽点 (Emotion)</h4>
+                                    <p v-if="isFetchingIntelligentAnalysis">加载中...</p>
+                                    <p v-else-if="intelligentAnalysis.emotion">{{ intelligentAnalysis.emotion }}</p>
+                                    <p v-else>暂无数据</p>
+                                </div>
+                            </div>
+                        </div>
                     </div>
                 </div>
-                <div class="space-x-4">
-                    <button @click="scrollTo('market')" class="hover:text-blue-400 transition">市场行情</button>
-                    <button @click="scrollTo('analysis')" class="hover:text-blue-400 transition">量化监控</button>
-                    <button @click="scrollTo('settings')" class="hover:text-blue-400 transition">通知设置</button>
+
+                <!-- Backtesting View -->
+                <div v-else-if="currentView === 'singleStockBacktest'" class="backtest-view">
+                    <div class="backtest-config">
+                        <h3>策略配置</h3>
+                        <div class="form-group">
+                            <label for="backtest-symbol">股票代码</label>
+                            <input type="text" id="backtest-symbol" v-model="backtestSymbol" placeholder="e.g., 000300.SH">
+                        </div>
+                        <div class="form-group">
+                            <label for="start-date">开始日期</label>
+                            <input type="date" id="start-date" v-model="startDate">
+                        </div>
+                        <div class="form-group">
+                            <label for="end-date">结束日期</label>
+                            <input type="date" id="end-date" v-model="endDate">
+                        </div>
+                        <div class="form-group">
+                            <label for="initial-capital">初始资金</label>
+                            <input type="number" id="initial-capital" v-model="initialCapital">
+                        </div>
+                        <div class="form-group">
+                            <label for="strategy">策略 (自然语言)</label>
+                            <textarea id="strategy" v-model="strategy" rows="4" placeholder="例如: 每月第一个交易日定投1000元"></textarea>
+                        </div>
+                        <button @click="runBacktest" class="run-backtest-btn" :disabled="isFetchingBacktest">
+                            {{ isFetchingBacktest ? '回测运行中...' : '开始回测' }}
+                        </button>
+                    </div>
+                    <div class="backtest-results">
+                        <div class="metric-cards">
+                            <div class="metric-card">
+                                <h4>年化收益率</h4>
+                                <div class="value" :class="getMetricClass(backtestResult.annualized_return)">{{ formatMetric(backtestResult.annualized_return, '%') }}</div>
+                            </div>
+                            <div class="metric-card">
+                                <h4>最大回撤</h4>
+                                <div class="value down">{{ formatMetric(backtestResult.max_drawdown, '%') }}</div>
+                            </div>
+                            <div class="metric-card">
+                                <h4>夏普比率</h4>
+                                <div class="value">{{ formatMetric(backtestResult.sharpe_ratio) }}</div>
+                            </div>
+                            <div class="metric-card">
+                                <h4>胜率</h4>
+                                <div class="value">{{ formatMetric(backtestResult.win_rate, '%') }}</div>
+                            </div>
+                        </div>
+                        <div id="backtest-chart-container">
+                            <div v-if="isFetchingBacktest" style="text-align: center; padding-top: 50px;">正在生成回测净值曲线...</div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Placeholder for other views -->
+                <div v-else class="placeholder-view">
+                    <div class="icon">
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M9.75 3.104v5.714a2.25 2.25 0 01-.659 1.591L5 14.5M9.75 3.104c.251.042.505.042.752 0L14.25 2.25c.251-.042.505-.042.752 0m-5.25 0V1.5c0-.414.336-.75.75-.75h3.5c.414 0 .75.336.75.75v1.604m-4.5 0c-.251.042-.505.042-.752 0m0 0c-.251.042-.505.042-.752 0m-7.5 5.25h15m-15 0c-.251.042-.505.042-.752 0m0 0c-.251.042-.505.042-.752 0M3 10.5v5.714c0 .828.672 1.5 1.5 1.5h3.5c.828 0 1.5-.672 1.5-1.5V10.5m-6 0c-.251.042-.505.042-.752 0m0 0c-.251.042-.505.042-.752 0m15-5.25h-15m15 0c.251.042.505.042.752 0m0 0c.251.042.505.042.752 0M21 10.5v5.714c0 .828-.672 1.5-1.5 1.5h-3.5c-.828 0-1.5-.672-1.5-1.5V10.5m6 0c.251.042.505.042.752 0m0 0c.251.042.505.042.752 0" />
+                        </svg>
+                    </div>
+                    <h3>功能开发中</h3>
+                    <p>我们正在努力开发中，敬请期待！</p>
                 </div>
             </div>
-        </nav>
-
-        <!-- Market Section -->
-        <section id="market" class="section pt-20">
-            <div class="container mx-auto">
-                <div class="flex justify-between items-center mb-8">
-                    <h2 class="text-4xl font-bold">实时市场监控</h2>
-                    <div class="text-right">
-                         <span class="inline-block w-3 h-3 rounded-full bg-green-500 animate-pulse mr-2"></span>
-                         <span class="text-gray-400 text-sm">数据实时同步中</span>
-                    </div>
-                </div>
-
-                <!-- Signal Dashboard (New) -->
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-                    <!-- Position Suggestion -->
-                    <div v-if="positionSuggestion" class="bg-gradient-to-r from-gray-800 to-gray-900 border border-gray-700 rounded-lg p-4 shadow-lg">
-                        <div class="flex justify-between items-start">
-                            <div class="flex items-center space-x-3">
-                                <div class="bg-blue-600 rounded-full p-2">
-                                    <span class="text-xl">💡</span>
-                                </div>
-                                <div>
-                                    <div class="font-bold text-lg text-blue-300">智能仓位 ({{ positionSuggestion.symbol }})</div>
-                                    <div class="text-xs text-gray-400">基于波动率优化</div>
-                                </div>
-                            </div>
-                            <div class="text-right">
-                                <div class="text-xs text-gray-500">建议仓位</div>
-                                <div class="font-bold text-white text-lg">{{ positionSuggestion.suggested_shares }} 股</div>
-                            </div>
-                        </div>
-                        <div class="mt-4 grid grid-cols-3 gap-2 text-center text-sm">
-                            <div class="bg-gray-800 rounded p-1">
-                                <div class="text-gray-500 text-xs">止损</div>
-                                <div class="text-red-400">{{ positionSuggestion.stop_loss }}</div>
-                            </div>
-                            <div class="bg-gray-800 rounded p-1">
-                                <div class="text-gray-500 text-xs">入场</div>
-                                <div class="text-white">{{ positionSuggestion.entry_price }}</div>
-                            </div>
-                            <div class="bg-gray-800 rounded p-1">
-                                <div class="text-gray-500 text-xs">止盈</div>
-                                <div class="text-green-400">{{ positionSuggestion.take_profit }}</div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- Sector Movers -->
-                    <div class="bg-gray-800 border border-gray-700 rounded-lg p-4 shadow-lg">
-                        <h3 class="font-bold text-gray-300 mb-3 flex items-center">
-                            <span class="mr-2">🚀</span> 行业异动 (Top Movers)
-                        </h3>
-                        <div v-if="sectorMovers.length === 0" class="text-gray-500 text-sm animate-pulse">扫描中...</div>
-                        <div v-else class="space-y-2">
-                            <div v-for="sector in sectorMovers" :key="sector.name" class="flex justify-between items-center text-sm border-b border-gray-700 pb-1 last:border-0">
-                                <span class="text-gray-300">{{ sector.name }}</span>
-                                <span :class="sector.change >= 0 ? 'text-green-400' : 'text-red-400'">
-                                    <span class="mr-1">{{ sector.change > 0 ? '↑' : (sector.change < 0 ? '↓' : '') }}</span>
-                                    {{ sector.change > 0 ? '+' : '' }}{{ sector.change }}%
-                                </span>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="grid grid-cols-1 lg:grid-cols-4 gap-6">
-                    <!-- Sidebar Dashboard -->
-                    <div class="lg:col-span-1 space-y-4">
-                        <div class="dashboard-card rounded-lg p-4">
-                            <div class="flex justify-between items-center mb-4">
-                                <h3 class="text-lg font-bold text-blue-400">关注列表</h3>
-                                <button @click="syncStrategies" class="text-xs bg-blue-600 hover:bg-blue-500 px-2 py-1 rounded transition">
-                                    🔄 同步策略
-                                </button>
-                            </div>
-                            <div class="space-y-2">
-                                <div v-if="isLoadingWatchlist" class="text-center py-4 text-gray-400">
-                                    <div class="inline-block animate-spin rounded-full h-4 w-4 border-t-2 border-b-2 border-blue-500 mr-2"></div>
-                                    加载中...
-                                </div>
-                                <div v-else-if="watchList.length === 0" class="text-center py-4 text-gray-500">
-                                    暂无关注，请添加
-                                </div>
-                                <div v-else v-for="item in watchList" :key="item.symbol" 
-                                     @click="fetchData(item.symbol)"
-                                     :class="['p-3 rounded cursor-pointer transition flex justify-between items-center', currentSymbol === item.symbol ? 'bg-blue-600' : 'bg-gray-800 hover:bg-gray-700']">
-                                    <div>
-                                        <div class="font-bold">
-                                            {{ item.name && item.name !== item.symbol ? item.name : item.symbol }}
-                                        </div>
-                                        <div class="text-xs text-gray-400" v-if="item.name && item.name !== item.symbol">
-                                            {{ item.symbol }}
-                                        </div>
-                                        <div class="text-xs text-gray-400" v-else>
-                                            {{ item.symbol }}
-                                        </div>
-                                    </div>
-                                    <div :class="item.change_pct >= 0 ? 'text-green-400' : 'text-red-400'">
-                                        <span class="mr-1">{{ item.change_pct > 0 ? '↑' : (item.change_pct < 0 ? '↓' : '') }}</span>
-                                        {{ typeof item.price === 'number' ? item.price.toFixed(3) : item.price }}
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-
-                        <div class="dashboard-card rounded-lg p-4">
-                            <h3 class="text-lg font-bold mb-4 text-purple-400">账户概览 (模拟)</h3>
-                            <div class="flex justify-between mb-2">
-                                <span class="text-gray-400">总资产</span>
-                                <span class="font-mono font-bold">¥{{ account.total.toLocaleString() }}</span>
-                            </div>
-                            <div class="flex justify-between mb-2">
-                                <span class="text-gray-400">可用现金</span>
-                                <span class="font-mono">¥{{ account.cash.toLocaleString() }}</span>
-                            </div>
-                            <div class="flex justify-between">
-                                <span class="text-gray-400">持仓盈亏</span>
-                                <span :class="account.pnl >= 0 ? 'text-green-400' : 'text-red-400'">
-                                    {{ account.pnl > 0 ? '+' : '' }}{{ account.pnl }}%
-                                </span>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- Main Chart -->
-                    <div class="lg:col-span-3">
-                        <div class="bg-gray-800 rounded-lg p-4 shadow-lg border border-gray-700 h-full flex flex-col">
-                            <!-- Search & Market Selection -->
-                            <div class="flex flex-wrap gap-2 mb-4 px-2">
-                                <select v-model="marketType" class="bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white outline-none focus:border-blue-500">
-                                    <option value="CN">A股 (CN)</option>
-                                    <option value="HK">港股 (HK)</option>
-                                    <option value="US">美股 (US)</option>
-                                </select>
-                                <div class="flex-grow flex">
-                                    <input v-model="searchInput" @keyup.enter="handleSearch" type="text" placeholder="输入代码 (如 000001, 0700, AAPL)" class="flex-grow bg-gray-700 border border-gray-600 rounded-l px-3 py-2 text-white outline-none focus:border-blue-500">
-                                    <button @click="handleSearch" class="bg-blue-600 px-4 rounded-r hover:bg-blue-700 transition">查询</button>
-                                </div>
-                            </div>
-
-                            <div class="flex justify-between items-center mb-2 px-2">
-                                <div class="flex items-center gap-2">
-                                    <div class="text-xl font-bold">
-                                        {{ stockDetails && stockDetails.name ? stockDetails.name : currentSymbol }}
-                                    </div>
-                                    <span v-if="stockDetails && stockDetails.name && stockDetails.name !== currentSymbol" class="text-sm text-gray-400">
-                                        ({{ currentSymbol }})
-                                    </span>
-                                    <span class="text-sm text-gray-400">[{{ timeframe }}]</span>
-                                    <button @click="toggleWatchlist" :class="isInWatchlist ? 'text-yellow-400' : 'text-gray-500'" class="hover:text-yellow-300 transition text-xl">
-                                        ★
-                                    </button>
-                                </div>
-                                <div class="flex items-center gap-2">
-                                    <!-- Timeframe Controls -->
-                                    <div class="flex space-x-1 bg-gray-700 rounded p-1 mr-4">
-                                        <button @click="setTimeframe('Intraday')" :class="['px-2 py-0.5 rounded text-xs transition', timeframe === 'Intraday' ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white']">分时</button>
-                                        <button @click="setTimeframe('1D')" :class="['px-2 py-0.5 rounded text-xs transition', timeframe === '1D' ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white']">日K</button>
-                                        <button @click="setTimeframe('1W')" :class="['px-2 py-0.5 rounded text-xs transition', timeframe === '1W' ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white']">周K</button>
-                                        <button @click="setTimeframe('1M')" :class="['px-2 py-0.5 rounded text-xs transition', timeframe === '1M' ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white']">月K</button>
-                                    </div>
-                                    <div class="text-2xl font-mono" :class="currentPrice >= lastPrice ? 'text-green-400' : 'text-red-400'">
-                                        <span class="mr-1">{{ currentPrice > lastPrice ? '↑' : (currentPrice < lastPrice ? '↓' : '') }}</span>
-                                        {{ currentPrice.toFixed(3) }}
-                                        <span class="text-sm ml-2">{{ ((currentPrice - lastPrice)/lastPrice * 100).toFixed(3) }}%</span>
-                                    </div>
-                                </div>
-                            </div>
-                            <div ref="chartContainer" class="chart-container flex-grow"></div>
-                        </div>
-                    </div>
-
-                    <!-- Stock Details & Order Book (New) -->
-                    <div v-if="stockDetails" class="bg-gray-800 p-4 rounded-lg border border-gray-700 mb-6">
-                         <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                            <!-- Basic Info & Correlation -->
-                            <div class="lg:col-span-1">
-                                <h3 class="font-bold text-gray-300 mb-3 text-sm">基本信息 & 相关性</h3>
-                                <div class="grid grid-cols-2 gap-y-2 text-xs">
-                                    <div class="text-gray-500">昨收</div>
-                                    <div class="text-white text-right">{{ typeof stockDetails.prev_close === 'number' ? stockDetails.prev_close.toFixed(3) : stockDetails.prev_close }}</div>
-                                    
-                                    <div class="text-gray-500">成交量</div>
-                                    <div class="text-white text-right">{{ (stockDetails.volume / 10000).toFixed(0) }}万</div>
-                                    
-                                    <div class="text-gray-500">Beta (相关性)</div>
-                                    <div class="text-right" :class="stockDetails.correlation > 1 ? 'text-red-400' : 'text-green-400'">
-                                        {{ stockDetails.correlation ? stockDetails.correlation.toFixed(2) : '-' }}
-                                    </div>
-                                    
-                                    <div class="text-gray-500">货币</div>
-                                    <div class="text-white text-right">{{ stockDetails.currency }}</div>
-                                </div>
-                            </div>
-
-                            <!-- Order Book (L1 + Simulated Depth) -->
-                            <div class="lg:col-span-2">
-                                 <h3 class="font-bold text-gray-300 mb-2 flex justify-between text-sm">
-                                    <span>📊 买卖五档 (Level 1+)</span>
-                                    <span class="text-xs text-gray-500 font-normal">实时模拟深度</span>
-                                 </h3>
-                                 <div class="grid grid-cols-2 gap-4 text-xs font-mono">
-                                     <!-- Asks (Sell) -->
-                                     <div>
-                                         <div class="flex justify-between text-gray-500 mb-1 px-1"><span>卖盘</span><span>价格</span><span>量</span></div>
-                                         <div v-for="(ask, i) in stockDetails.order_book.asks" :key="'ask'+i" class="flex justify-between items-center px-1 py-0.5 relative group hover:bg-gray-700 rounded">
-                                             <span class="text-gray-500 z-10">卖{{ 5-i }}</span>
-                                             <span class="text-red-400 z-10">{{ ask.price.toFixed(3) }}</span>
-                                             <span class="text-gray-300 z-10">{{ ask.volume }}</span>
-                                             <!-- Visual Bar -->
-                                             <div class="absolute right-0 top-0 bottom-0 bg-red-900 opacity-30 rounded" :style="{width: Math.min((ask.volume/1000)*100, 100) + '%'}"></div>
-                                         </div>
-                                     </div>
-                                     <!-- Bids (Buy) -->
-                                     <div>
-                                         <div class="flex justify-between text-gray-500 mb-1 px-1"><span>买盘</span><span>价格</span><span>量</span></div>
-                                         <div v-for="(bid, i) in stockDetails.order_book.bids" :key="'bid'+i" class="flex justify-between items-center px-1 py-0.5 relative group hover:bg-gray-700 rounded">
-                                             <span class="text-gray-500 z-10">买{{ i+1 }}</span>
-                                             <span class="text-green-400 z-10">{{ bid.price.toFixed(3) }}</span>
-                                             <span class="text-gray-300 z-10">{{ bid.volume }}</span>
-                                             <!-- Visual Bar -->
-                                             <div class="absolute right-0 top-0 bottom-0 bg-green-900 opacity-30 rounded" :style="{width: Math.min((bid.volume/1000)*100, 100) + '%'}"></div>
-                                         </div>
-                                     </div>
-                                 </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </section>
-
-        <!-- Analysis Section -->
-        <section id="analysis" class="section bg-gray-900 bg-opacity-50">
-            <div class="container mx-auto">
-                <h2 class="text-4xl font-bold mb-8 text-center">网格交易监控中心</h2>
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
-                    <!-- Strategy Status -->
-                    <div class="bg-gray-800 p-6 rounded-lg border border-gray-700">
-                        <div class="flex justify-between items-center mb-4">
-                            <h3 class="text-xl font-bold text-green-400">策略运行状态</h3>
-                            <span v-if="isRunning" class="px-2 py-1 bg-green-900 text-green-300 text-xs rounded border border-green-700">运行中</span>
-                            <span v-else class="px-2 py-1 bg-gray-700 text-gray-300 text-xs rounded">已停止</span>
-                        </div>
-                        
-                        <!-- Grid Visualization Bar -->
-                        <div class="mb-6 relative h-12 bg-gray-700 rounded-full overflow-hidden flex items-center">
-                            <!-- Progress bar indicating price position within grid -->
-                            <div class="absolute h-full bg-gradient-to-r from-blue-600 to-purple-600 opacity-50 transition-all duration-1000"
-                                 :style="{ width: gridProgress + '%' }"></div>
-                            
-                            <!-- Markers for grid lines -->
-                            <div class="absolute w-full flex justify-between px-4 z-10">
-                                <span class="text-xs text-gray-300">{{ gridLower }}</span>
-                                <span class="text-xs font-bold text-white drop-shadow-md">
-                                    当前: {{ currentPrice.toFixed(2) }}
-                                </span>
-                                <span class="text-xs text-gray-300">{{ gridUpper }}</span>
-                            </div>
-                        </div>
-
-                        <div class="grid grid-cols-2 gap-4 mb-4">
-                             <div class="bg-gray-900 p-3 rounded">
-                                 <div class="text-xs text-gray-500">网格数量</div>
-                                 <div class="font-mono text-lg">5</div>
-                             </div>
-                             <div class="bg-gray-900 p-3 rounded">
-                                 <div class="text-xs text-gray-500">触发次数</div>
-                                 <div class="font-mono text-lg">{{ logs.filter(l => l.message.includes('Near')).length }}</div>
-                             </div>
-                        </div>
-
-                        <div class="mt-4 p-4 bg-gray-900 rounded font-mono text-sm h-48 overflow-y-auto border border-gray-700">
-                            <div v-for="(log, index) in logs" :key="index" class="mb-1 border-b border-gray-800 pb-1 last:border-0">
-                                <span class="text-gray-500 text-xs">[{{ log.time }}]</span> 
-                                <span :class="log.message.includes('Near') ? 'text-yellow-400' : 'text-gray-300'">{{ log.message }}</span>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- Strategy Config -->
-                    <div class="bg-gray-800 p-6 rounded-lg border border-gray-700">
-                        <h3 class="text-xl font-bold mb-4 text-purple-400">参数配置</h3>
-                        <div class="space-y-4">
-                            <!-- ATR Suggestion -->
-                            <div v-if="stockDetails && stockDetails.atr" class="bg-gray-900 p-2 rounded text-xs text-gray-400 border border-gray-700">
-                                <div class="flex justify-between">
-                                    <span>ATR (20日波动): {{ stockDetails.atr.toFixed(3) }}</span>
-                                    <span class="text-blue-400 cursor-pointer hover:underline" @click="applyAtrSuggestion">应用建议网格</span>
-                                </div>
-                                <div class="mt-1">
-                                    建议网格间距: {{ stockDetails.suggested_grid.toFixed(3) }} (1 ATR)
-                                </div>
-                            </div>
-
-                            <div>
-                                <label class="block text-sm text-gray-400 mb-1">网格基准价 (Benchmark Price)</label>
-                                <div class="flex gap-2">
-                                    <input v-model.number="gridBenchmark" type="number" class="w-full bg-gray-700 border border-gray-600 rounded p-2 text-white focus:border-blue-500 outline-none transition">
-                                    <button @click="gridBenchmark = currentPrice" class="bg-gray-600 px-3 rounded hover:bg-gray-500 text-xs">当前</button>
-                                </div>
-                            </div>
-                            
-                            <div>
-                                <label class="block text-sm text-gray-400 mb-1">网格比例 (Grid Ratio %)</label>
-                                <input v-model.number="gridRatio" type="number" step="0.1" class="w-full bg-gray-700 border border-gray-600 rounded p-2 text-white focus:border-blue-500 outline-none transition" @input="updateGridFromRatio">
-                            </div>
-
-                            <div class="grid grid-cols-2 gap-2">
-                                <div>
-                                    <label class="block text-sm text-gray-400 mb-1">网格上界 (Upper)</label>
-                                    <input v-model.number="gridUpper" type="number" class="w-full bg-gray-700 border border-gray-600 rounded p-2 text-white focus:border-blue-500 outline-none transition">
-                                </div>
-                                <div>
-                                    <label class="block text-sm text-gray-400 mb-1">网格下界 (Lower)</label>
-                                    <input v-model.number="gridLower" type="number" class="w-full bg-gray-700 border border-gray-600 rounded p-2 text-white focus:border-blue-500 outline-none transition">
-                                </div>
-                            </div>
-                            
-                            <button @click="startStrategy" 
-                                    :class="['w-full py-3 rounded transition font-bold shadow-lg transform active:scale-95', isRunning ? 'bg-red-600 hover:bg-red-700' : 'bg-green-600 hover:bg-green-700']">
-                                {{ isRunning ? '停止策略 (Stop Strategy)' : '启动监控策略 (Start Monitoring)' }}
-                            </button>
-                        </div>
-                    </div>
-                </div>
-                <!-- Generate Report Button -->
-                <div class="fixed bottom-24 right-8 z-40">
-                    <button @click="generateReport" class="bg-red-600 hover:bg-red-700 text-white font-bold py-3 px-4 rounded-full shadow-lg flex items-center transition transform hover:scale-105">
-                        <span class="mr-2">🚀</span> 生成今日战报
-                    </button>
-                </div>
-
-                <!-- AI News Ticker (Bottom Bar) -->
-                <div class="fixed bottom-0 left-0 w-full bg-black bg-opacity-90 border-t border-gray-800 z-50 h-10 flex items-center overflow-hidden">
-                    <div class="bg-blue-900 px-3 py-2 text-xs font-bold shrink-0 z-10">AI 参谋</div>
-                    <div class="ticker-wrap flex-grow">
-                         <div class="ticker">
-                             <span v-if="newsItems.length === 0" class="text-gray-500 mx-4">正在扫描市场情报...</span>
-                             <span v-for="(item, i) in newsItems" :key="i" class="ticker-item mx-8">
-                                 <span class="text-gray-400 text-xs mr-1">[{{ item.time }}]</span>
-                                 <span :class="item.sentiment === 'positive' ? 'text-red-400' : (item.sentiment === 'negative' ? 'text-green-400' : 'text-white')">
-                                     {{ item.content }}
-                                 </span>
-                             </span>
-                         </div>
-                    </div>
-                </div>
-
-                <style>
-                    .ticker-wrap { width: 100%; overflow: hidden; white-space: nowrap; }
-                    .ticker { display: inline-block; animation: ticker 60s linear infinite; }
-                    .ticker-item { display: inline-block; }
-                    @keyframes ticker {
-                        0% { transform: translateX(100%); }
-                        100% { transform: translateX(-100%); }
-                    }
-                </style>
-
-            </div>
-        </section>
-
-        <!-- Transaction Cost Calculator Section -->
-        <section id="calculator" class="section">
-            <div class="container mx-auto">
-                <h2 class="text-4xl font-bold mb-8 text-center">交易成本计算器 (Transaction Cost)</h2>
-                <div class="bg-gray-800 p-8 rounded-lg border border-gray-700 max-w-4xl mx-auto">
-                    <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
-                        <div>
-                            <h3 class="text-xl font-bold mb-4 text-blue-400">输入参数</h3>
-                            <div class="space-y-4">
-                                <div>
-                                    <label class="block text-sm text-gray-400 mb-1">总资金 (Total Capital)</label>
-                                    <input v-model.number="calcCapital" type="number" class="w-full bg-gray-700 border border-gray-600 rounded p-3 text-white focus:border-blue-500 outline-none">
-                                </div>
-                                <div>
-                                    <label class="block text-sm text-gray-400 mb-1">当前价格 (Current Price)</label>
-                                    <input v-model.number="calcPrice" type="number" class="w-full bg-gray-700 border border-gray-600 rounded p-3 text-white focus:border-blue-500 outline-none">
-                                </div>
-                                <div>
-                                    <label class="block text-sm text-gray-400 mb-1">佣金费率 (Commission Rate)</label>
-                                    <div class="flex items-center">
-                                        <input v-model.number="calcRate" type="number" step="0.0001" class="w-full bg-gray-700 border border-gray-600 rounded-l p-3 text-white focus:border-blue-500 outline-none">
-                                        <span class="bg-gray-600 px-3 py-3 rounded-r text-gray-300">%</span>
-                                    </div>
-                                    <p class="text-xs text-gray-500 mt-1">通常为万分之2.5 (0.025%)</p>
-                                </div>
-                            </div>
-                        </div>
-                        
-                        <div>
-                            <h3 class="text-xl font-bold mb-4 text-green-400">计算结果</h3>
-                            <div class="bg-gray-900 p-6 rounded border border-gray-700 h-full">
-                                <div class="mb-4">
-                                    <div class="text-gray-400 text-sm">最大可买股数</div>
-                                    <div class="text-2xl font-mono text-white">{{ maxShares }} 股</div>
-                                    <div class="text-xs text-gray-500">({{ (maxShares/100).toFixed(0) }} 手)</div>
-                                </div>
-                                
-                                <div class="mb-4">
-                                    <div class="text-gray-400 text-sm">预估佣金 (Commission)</div>
-                                    <div class="text-2xl font-mono" :class="commission < 5 ? 'text-red-400' : 'text-green-400'">
-                                        ¥{{ commission.toFixed(2) }}
-                                    </div>
-                                    <div v-if="commission < 5" class="mt-2 bg-red-900 bg-opacity-50 border border-red-700 text-red-300 p-2 rounded text-xs flex items-start">
-                                        <span class="mr-1">⚠️</span>
-                                        <span>当前买入笔数过小，佣金不足5元，券商将按5元收取 (免五限制)。建议增加单笔金额。</span>
-                                    </div>
-                                </div>
-                                
-                                <div>
-                                    <div class="text-gray-400 text-sm">实际交易成本占比</div>
-                                    <div class="text-xl font-mono text-white">{{ ((Math.max(commission, 5) / (maxShares * calcPrice)) * 100).toFixed(4) }}%</div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </section>
-
-        <!-- Settings Section -->
-        <section id="settings" class="section">
-            <div class="container mx-auto max-w-2xl">
-                <h2 class="text-4xl font-bold mb-8 text-center">通知设置</h2>
-                <div class="bg-gray-800 p-8 rounded-lg border border-gray-700">
-                    <div class="mb-6">
-                        <label class="block text-lg mb-2">微信推送 (UID)</label>
-                        <input v-model="wxUid" type="text" placeholder="输入你的微信推送UID (如WxPusher)" class="w-full bg-gray-700 border border-gray-600 rounded p-3 text-white">
-                        <p class="text-sm text-gray-500 mt-2">当触发交易信号时，系统将发送消息到此微信。</p>
-                    </div>
-                    <button @click="saveSettings" class="w-full py-3 bg-indigo-600 rounded hover:bg-indigo-700 transition font-bold">保存设置</button>
-                </div>
-            </div>
-        </section>
+        </div>
     </div>
 
     <script>
-        const { createApp, ref, onMounted, shallowRef, computed, onUnmounted } = Vue;
+        const { createApp, ref, computed, onMounted, onUnmounted, watch, nextTick } = Vue;
 
         createApp({
             setup() {
-                const chartContainer = ref(null);
-                const chart = shallowRef(null);
-                const candlestickSeries = shallowRef(null);
-                const priceLines = ref([]); // Store grid lines
-                const currentSymbol = ref('000001.SZ');
-                const currentPrice = ref(0.00);
-                const lastPrice = ref(0.00); // For calculating change
-                const gridUpper = ref(85.00);
-                const gridLower = ref(75.00);
-                const gridBenchmark = ref(80.00);
-                const gridRatio = ref(5.0); // 5%
+                // --- App State ---
+                const currentView = ref('marketAnalysis');
+                const menuItems = ref([
+                    { id: 'marketAnalysis', name: '行情分析', icon: '<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M2.25 18L9 11.25l4.306 4.307a11.95 11.95 0 015.814-5.519l2.74-1.22m0 0l-3.75-2.25M21 12l-3.75 2.25" /></svg>' },
+                    { id: 'singleStockBacktest', name: '单股回测', icon: '<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M12 6.042A8.967 8.967 0 006 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 016 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 016-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0018 18a8.967 8.967 0 00-6 2.292m0-14.25v14.25" /></svg>' },
+                    { id: 'sectorAnalysis', name: '板块分析', icon: '<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M9 4.5v15m6-15v15m-10.875 0h15.75c.621 0 1.125-.504 1.125-1.125V5.625c0-.621-.504-1.125-1.125-1.125H4.125C3.504 4.5 3 5.004 3 5.625v12.75c0 .621.504 1.125 1.125 1.125z" /></svg>' },
+                    { id: 'hotspotTracking', name: '热点追踪', icon: '<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M15.362 5.214A8.252 8.252 0 0112 21 8.25 8.25 0 016.038 7.048 8.287 8.287 0 009 9.6a8.983 8.983 0 013.362-3.797z" /></svg>' },
+                    { id: 'strategyBacktest', name: '策略回测', icon: '<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.456 2.456L21.75 6l-1.035.259a3.375 3.375 0 00-2.456 2.456zM16.898 20.562L16.25 21.75l-.648-1.188a2.25 2.25 0 01-1.47-1.47L12.944 18l1.188-.648a2.25 2.25 0 011.47-1.47L16.25 15l.648 1.188a2.25 2.25 0 011.47 1.47L19.566 18l-1.188.648a2.25 2.25 0 01-1.47 1.47z" /></svg>' },
+                    { id: 'portfolioManagement', name: '组合管理', icon: '<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M2.25 7.125A2.25 2.25 0 014.5 4.875h15A2.25 2.25 0 0121.75 7.125v1.586a2.25 2.25 0 01-.659 1.59l-4.5 4.5a2.25 2.25 0 01-1.59.659H8.25a2.25 2.25 0 01-1.59-.659l-4.5-4.5A2.25 2.25 0 012.25 8.711V7.125z" /></svg>' },
+                    { id: 'marketSentiment', name: '市场情绪', icon: '<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M15.182 15.182a4.5 4.5 0 01-6.364 0M21 12a9 9 0 11-18 0 9 9 0 0118 0zM9 9.75h.008v.008H9V9.75zm6 0h.008v.008H15V9.75z" /></svg>' },
+                    { id: 'eventDriven', name: '事件驱动', icon: '<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>' },
+                    { id: 'riskManagement', name: '风险管理', icon: '<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75L11.25 15 15 9.75m-3-7.036A11.959 11.959 0 013.598 6 11.99 11.99 0 003 9.749c0 5.592 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.286zm0 13.036h.008v.008H12v-.008z" /></svg>' },
+                    { id: 'dataCenter', name: '数据中心', icon: '<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M20.25 6.375c0 2.278-3.694 4.125-8.25 4.125S3.75 8.653 3.75 6.375m16.5 0c0-2.278-3.694-4.125-8.25-4.125S3.75 4.097 3.75 6.375m16.5 0v11.25c0 2.278-3.694 4.125-8.25 4.125s-8.25-1.847-8.25-4.125V6.375" /></svg>' },
+                    { id: 'factorLibrary', name: '因子库', icon: '<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M3.75 3v11.25A2.25 2.25 0 006 16.5h2.25M3.75 3h-1.5m1.5 0h16.5m0 0h1.5m-1.5 0v11.25A2.25 2.25 0 0118 16.5h-2.25m-7.5 0h7.5m-7.5 0l-1 1.5m1-1.5l1 1.5m0 0l-1 1.5m1-1.5l1 1.5M6 16.5v-3.375c0-.621.504-1.125 1.125-1.125h3.75c.621 0 1.125.504 1.125 1.125V16.5m-6 0h3.75m-3.75 0l1-1.5m-1 1.5l-1 1.5" /></svg>' },
+                    { id: 'aiAssistant', name: 'AI助理', icon: '<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M8.25 3v1.5M4.5 8.25H3m18 0h-1.5M4.5 12H3m18 0h-1.5m-15 3.75H3m18 0h-1.5M8.25 19.5V21M12 3v1.5m0 15V21m3.75-18v1.5m0 15V21m-9-1.5h10.5a2.25 2.25 0 002.25-2.25V8.25a2.25 2.25 0 00-2.25-2.25H8.25a2.25 2.25 0 00-2.25 2.25v9a2.25 2.25 0 002.25 2.25z" /></svg>' },
+                    { id: 'knowledgeBase', name: '知识库', icon: '<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M12 6.042A8.967 8.967 0 006 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 016 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 016-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0018 18a8.967 8.967 0 00-6 2.292m0-14.25v14.25" /></svg>' },
+                    { id: 'settings', name: '系统设置', icon: '<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.324.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 011.37.49l1.296 2.247a1.125 1.125 0 01-.26 1.431l-1.003.827c-.293.24-.438.613-.438 1.001s.145.761.438 1.001l1.003.827c.424.35.534.954.26 1.431l-1.296 2.247a1.125 1.125 0 01-1.37.49l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.57 6.57 0 01-.22.128c-.331.183-.581.495-.644.869l-.213 1.28c-.09.543-.56.941-1.11.941h-2.594c-.55 0-1.02-.398-1.11-.94l-.213-1.281c-.063-.374-.313-.686-.645-.87a6.52 6.52 0 01-.22-.127c-.324-.196-.72-.257-1.075-.124l-1.217.456a1.125 1.125 0 01-1.37-.49l-1.296-2.247a1.125 1.125 0 01.26-1.431l1.004-.827c.292-.24.437-.613.437-1.001s-.145-.761-.437-1.001l-1.004-.827a1.125 1.125 0 01-.26-1.431l1.296-2.247a1.125 1.125 0 011.37-.49l1.217.456c.355.133.75.072 1.076-.124.072-.044.146-.087.22-.128.332-.183.582-.495.644-.869l.213-1.28z" /></svg>' },
+                ]);
 
-                const isRunning = ref(false);
-                const logs = ref([]);
-                const wxUid = ref('');
-                
-                // Search & Watchlist
-                const marketType = ref('CN');
-                const searchInput = ref('');
-                const watchList = ref([]); // Dynamic
-                const isLoadingWatchlist = ref(false);
-                
-                // Chart Data & State
-                const timeframe = ref('1D'); // 1D, 1W, 1M, Intraday (1m)
-                const stockDetails = ref(null); // Detailed info (L1, Correlation)
-
-                // Calculator
-                const calcCapital = ref(50000);
-                const calcPrice = ref(10.00);
-                const calcRate = ref(0.025); // 0.025%
-
-                const account = ref({
-                    total: 100000,
-                    cash: 50000,
-                    pnl: 5.2
+                const currentViewName = computed(() => {
+                    const activeItem = menuItems.value.find(item => item.id === currentView.value);
+                    return activeItem ? activeItem.name : '仪表盘';
                 });
 
-                const maxShares = computed(() => {
-                    if (calcPrice.value <= 0) return 0;
-                    // Calculate raw shares
-                    let raw = Math.floor(calcCapital.value / calcPrice.value);
-                    // Round down to nearest 100 (1 lot)
-                    return Math.floor(raw / 100) * 100;
+                const changeView = (viewId) => {
+                    currentView.value = viewId;
+                };
+
+                // --- Market Analysis State & Logic ---
+                const searchSymbol = ref('000300.SH');
+                const currentSymbol = ref('000300.SH');
+                const stockDetails = ref({});
+                const selectedInterval = ref('daily');
+                const chart = ref(null);
+                const candleSeries = ref(null);
+                let realtimeQuoteInterval = null;
+
+                const priceChangePercent = computed(() => {
+                    if (stockDetails.value.current_price && stockDetails.value.price_change) {
+                        const lastPrice = stockDetails.value.current_price - stockDetails.value.price_change;
+                        return lastPrice !== 0 ? (stockDetails.value.price_change / lastPrice) * 100 : 0;
+                    }
+                    return 0;
                 });
 
-                const commission = computed(() => {
-                    if (maxShares.value <= 0) return 0;
-                    const amt = maxShares.value * calcPrice.value;
-                    return amt * (calcRate.value / 100);
-                });
-
-                const updateGridFromRatio = () => {
-                    if (gridBenchmark.value > 0) {
-                         const delta = gridBenchmark.value * (gridRatio.value / 100);
-                         gridUpper.value = parseFloat((gridBenchmark.value + delta).toFixed(2));
-                         gridLower.value = parseFloat((gridBenchmark.value - delta).toFixed(2));
+                const initializeChart = () => {
+                    if (chart.value) {
+                        chart.value.remove();
                     }
-                };
-                
-                // When benchmark changes, also update if ratio is set? 
-                // Or maybe user wants to manually set upper/lower. 
-                // Let's keep them somewhat synced if ratio changes.
+                    const chartContainer = document.getElementById('chart-container');
+                    if (!chartContainer) return;
 
-                const applyAtrSuggestion = () => {
-                    if (stockDetails.value && stockDetails.value.suggested_grid) {
-                        const atr = stockDetails.value.suggested_grid;
-                        gridBenchmark.value = currentPrice.value;
-                        gridUpper.value = parseFloat((currentPrice.value + atr * 2).toFixed(2)); // 2 ATR width
-                        gridLower.value = parseFloat((currentPrice.value - atr * 2).toFixed(2));
-                        gridRatio.value = parseFloat(((atr * 2 / currentPrice.value) * 100).toFixed(2));
-                    }
-                };
-
-                const isInWatchlist = computed(() => {
-                    return watchList.value.some(item => item.symbol === currentSymbol.value);
-                });
-
-                const gridProgress = computed(() => {
-                    const range = gridUpper.value - gridLower.value;
-                    if (range <= 0) return 0;
-                    const progress = ((currentPrice.value - gridLower.value) / range) * 100;
-                    return Math.min(Math.max(progress, 0), 100);
-                });
-
-                const newsItems = ref([]);
-
-                const fetchNews = async () => {
-                    try {
-                        const res = await fetch('/api/market/news');
-                        if (res.ok) {
-                            newsItems.value = await res.json();
-                        }
-                    } catch (e) {
-                        console.error("News fetch error", e);
-                    }
-                };
-
-                const generateReport = async () => {
-                    addLog("正在生成今日战报...");
-                    try {
-                        // Use current symbol or default to 512100 as requested?
-                        // User asked for "Generate Report" button generally, but context implies for the current view or 512100.
-                        // Let's use currentSymbol if it's an ETF/Stock, otherwise 512100.
-                        const symbol = currentSymbol.value || "512100";
-                        
-                        const response = await fetch(`/api/report/generate?symbol=${symbol}`);
-                        if (!response.ok) throw new Error("生成失败");
-                        
-                        const blob = await response.blob();
-                        const url = window.URL.createObjectURL(blob);
-                        const a = document.createElement('a');
-                        a.href = url;
-                        a.download = `report_${symbol}_${new Date().toISOString().slice(0,10)}.png`;
-                        document.body.appendChild(a);
-                        a.click();
-                        window.URL.revokeObjectURL(url);
-                        addLog("战报已下载");
-                        confetti({ particleCount: 150, spread: 60 });
-                    } catch (e) {
-                        addLog("战报生成错误: " + e.message);
-                    }
-                };
-
-                let pollInterval = null;
-
-                const addLog = (msg) => {
-                    const time = new Date().toLocaleTimeString();
-                    logs.value.unshift({ time, message: msg });
-                };
-
-                const fetchWatchlist = async () => {
-                    try {
-                        isLoadingWatchlist.value = true;
-                        const controller = new AbortController();
-                        const timeoutId = setTimeout(() => controller.abort(), 45000); // 45s timeout (Render can be slow)
-                        
-                        const res = await fetch('/api/watchlist', { signal: controller.signal });
-                        clearTimeout(timeoutId);
-                        
-                        if (!res.ok) throw new Error("Watchlist fetch failed");
-                        
-                        const data = await res.json();
-                        watchList.value = data.map(d => ({
-                            name: d.symbol, 
-                            symbol: d.symbol,
-                            price: d.price.toFixed(2),
-                            change: d.change_pct
-                        }));
-                    } catch(e) {
-                        console.error("Watchlist fetch error", e);
-                        addLog(`获取列表失败: ${e.message}`);
-                    } finally {
-                        isLoadingWatchlist.value = false;
-                    }
-                };
-
-                const handleSearch = () => {
-                    let symbol = searchInput.value.trim();
-                    if (!symbol) return;
-                    
-                    if (marketType.value === 'CN') {
-                        // Optimized Code Logic (User Request)
-                        if (/^\d{6}$/.test(symbol)) {
-                             // 5xxxxx -> ETF, 6xxxxx -> SH Main
-                             if (symbol.startsWith('5') || symbol.startsWith('6')) {
-                                 // User explicitly asked: 5/6 -> .SH (or .SS), 0/3 -> .SZ
-                                 // Yahoo uses .SS for Shanghai.
-                                 symbol += '.SS'; 
-                             } else if (symbol.startsWith('0') || symbol.startsWith('3')) {
-                                 symbol += '.SZ';
-                             }
-                        }
-                    } else if (marketType.value === 'HK') {
-                        if (/^\d+$/.test(symbol)) {
-                             while(symbol.length < 4) symbol = '0' + symbol;
-                             symbol += '.HK';
-                        }
-                    } else if (marketType.value === 'US') {
-                        symbol = symbol.toUpperCase();
-                    }
-                    
-                    fetchData(symbol);
-                    searchInput.value = '';
-                };
-
-                const toggleWatchlist = async () => {
-                    const symbol = currentSymbol.value;
-                    if (isInWatchlist.value) {
-                        await fetch(`/api/watchlist/${symbol}`, { method: 'DELETE' });
-                    } else {
-                        await fetch('/api/watchlist', { 
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ symbol })
-                        });
-                    }
-                    fetchWatchlist();
-                };
-
-                const syncStrategies = async () => {
-                    try {
-                        addLog("正在同步策略...");
-                        const res = await fetch('/api/watchlist/sync_strategies', { method: 'POST' });
-                        const data = await res.json();
-                        addLog(`同步完成: ${data.started.length} 个已启动, ${data.failed.length} 个失败`);
-                    } catch (e) {
-                        addLog("同步策略失败: " + e.message);
-                    }
-                };
-
-                const initChart = () => {
-                    if (!chartContainer.value) return;
-                    
-                    if (typeof LightweightCharts === 'undefined') {
-                        addLog("图表库加载失败，请刷新");
-                        return;
-                    }
-
-                    try {
-                        chart.value = LightweightCharts.createChart(chartContainer.value, {
-                            layout: { background: { type: 'solid', color: '#1f2937' }, textColor: '#d1d5db' },
-                            grid: { vertLines: { color: '#374151' }, horzLines: { color: '#374151' } },
-                            width: chartContainer.value.clientWidth,
-                            height: chartContainer.value.clientHeight, // Use container height
-                            timeScale: { timeVisible: true, secondsVisible: false },
-                        });
-                        candlestickSeries.value = chart.value.addCandlestickSeries({
-                            upColor: '#26a69a', downColor: '#ef5350', borderVisible: false, wickUpColor: '#26a69a', wickDownColor: '#ef5350',
-                        });
-                        
-                        // Initial fetch
-                        fetchData('000001.SZ');
-                        fetchWatchlist();
-                    } catch (e) {
-                        console.error("Chart init error", e);
-                    }
-                };
-                
-                // Draw Grid Lines on Chart
-                const updateGridLines = () => {
-                    if (!candlestickSeries.value) return; // Should be able to draw even if not running to visualize setup
-                    
-                    // Clear existing
-                    priceLines.value.forEach(line => candlestickSeries.value.removePriceLine(line));
-                    priceLines.value = [];
-                    
-                    // Add new lines
-                    const step = (gridUpper.value - gridLower.value) / 5;
-                    
-                    // Upper (Resistance) - Red
-                    const upperLine = candlestickSeries.value.createPriceLine({
-                        price: gridUpper.value,
-                        color: '#ef5350',
-                        lineWidth: 2,
-                        lineStyle: LightweightCharts.LineStyle.Solid,
-                        axisLabelVisible: true,
-                        title: '卖出上限 (Sell)',
+                    chart.value = LightweightCharts.createChart(chartContainer, {
+                        width: chartContainer.clientWidth,
+                        height: 500,
+                        layout: {
+                            background: { type: 'solid', color: '#FFFFFF' },
+                            textColor: 'rgba(33, 56, 77, 1)',
+                        },
+                        grid: {
+                            vertLines: { color: 'rgba(197, 203, 206, 0.5)' },
+                            horzLines: { color: 'rgba(197, 203, 206, 0.5)' },
+                        },
+                        crosshair: { mode: LightweightCharts.CrosshairMode.Normal },
+                        rightPriceScale: { borderColor: 'rgba(197, 203, 206, 0.8)' },
+                        timeScale: { borderColor: 'rgba(197, 203, 206, 0.8)' },
                     });
-                    priceLines.value.push(upperLine);
-                    
-                    // Lower (Support) - Green
-                    const lowerLine = candlestickSeries.value.createPriceLine({
-                        price: gridLower.value,
-                        color: '#26a69a',
-                        lineWidth: 2,
-                        lineStyle: LightweightCharts.LineStyle.Solid,
-                        axisLabelVisible: true,
-                        title: '买入下限 (Buy)',
+
+                    candleSeries.value = chart.value.addCandlestickSeries({
+                        upColor: 'rgba(5, 150, 105, 1)',
+                        downColor: 'rgba(246, 53, 63, 1)',
+                        borderDownColor: 'rgba(246, 53, 63, 1)',
+                        borderUpColor: 'rgba(5, 150, 105, 1)',
+                        wickDownColor: 'rgba(246, 53, 63, 1)',
+                        wickUpColor: 'rgba(5, 150, 105, 1)',
                     });
-                    priceLines.value.push(lowerLine);
-                    
-                    // Inner Grids - Dashed
-                    for (let i = 1; i < 5; i++) {
-                        const p = gridLower.value + i * step;
-                        const line = candlestickSeries.value.createPriceLine({
-                            price: p,
-                            color: '#fbbf24', // Amber
-                            lineWidth: 1,
-                            lineStyle: LightweightCharts.LineStyle.Dashed,
-                            axisLabelVisible: false,
-                            title: `网格 ${i}`,
-                        });
-                        priceLines.value.push(line);
-                    }
                 };
 
-                const marketSentiment = ref(null);
-                const positionSuggestion = ref(null);
-                const sectorMovers = ref([]);
-
-                const fetchSectorMovers = async () => {
+                const fetchData = async () => {
+                    if (!currentSymbol.value) return;
                     try {
-                        const res = await fetch(`/api/market/sectors?type=${marketType.value}`);
-                        if (res.ok) {
-                            sectorMovers.value = await res.json();
-                        }
-                    } catch (e) {
-                        console.error("Sector fetch failed", e);
-                    }
-                };
+                        const response = await fetch(`/api/market_data/${currentSymbol.value}?interval=${selectedInterval.value}`);
+                        if (!response.ok) throw new Error('Network response was not ok');
+                        const data = await response.json();
 
-                const fetchMarketSentiment = async () => {
-                    try {
-                        const res = await fetch(`/api/market/sentiment?type=${marketType.value}`);
-                        marketSentiment.value = await res.json();
-                    } catch (e) {
-                        console.error("Sentiment fetch failed", e);
-                    }
-                };
-
-                const fetchPositionSizing = async (symbol) => {
-                    try {
-                        const res = await fetch(`/api/analysis/position?symbol=${symbol}&balance=${account.value.total}`);
-                        if (res.ok) {
-                            positionSuggestion.value = await res.json();
-                        } else {
-                            positionSuggestion.value = null;
-                        }
-                    } catch (e) {
-                        positionSuggestion.value = null;
-                    }
-                };
-
-                const fetchData = async (symbol) => {
-                    try {
-                        currentSymbol.value = symbol;
+                        stockDetails.value = {
+                            ...stockDetails.value,
+                            name: data.name,
+                            symbol: data.symbol,
+                            volume: data.volume,
+                            market_cap: data.market_cap,
+                            pe_ratio: data.pe_ratio,
+                        };
                         
-                        // Map timeframe to API params
-                        let period = '1mo';
-                        let interval = '1d';
-                        
-                        if (timeframe.value === '1D') { period = '1mo'; interval = '1d'; }
-                        else if (timeframe.value === '1W') { period = '6mo'; interval = '1wk'; }
-                        else if (timeframe.value === '1M') { period = '2y'; interval = '1mo'; }
-                        else if (timeframe.value === 'Intraday') { period = '1d'; interval = '1m'; }
-
-                        const res = await fetch(`/api/kline?symbol=${symbol}&period=${period}&interval=${interval}`);
-                        const data = await res.json();
-                        
-                        if (candlestickSeries.value) {
-                            candlestickSeries.value.setData(data);
-                        }
-                        
-                        if (data.length > 0) {
-                            const last = data[data.length - 1];
-                            lastPrice.value = currentPrice.value;
-                            currentPrice.value = last.close;
-                            
-                            // Update grid range if not running
-                            if (!isRunning.value) {
-                                gridUpper.value = Number((last.close * 1.05).toFixed(2));
-                                gridLower.value = Number((last.close * 0.95).toFixed(2));
+                        if (data && Array.isArray(data.kline_data) && data.kline_data.length > 0) {
+                            if (!chart.value || !candleSeries.value) {
+                                initializeChart();
                             }
-                            // Trigger dynamic line update
-                            updateGridLines();
+                            candleSeries.value.setData(data.kline_data);
+                            chart.value.timeScale().fitContent();
+                        } else {
+                            console.warn("Invalid or missing kline_data from API");
+                            if (candleSeries.value) candleSeries.value.setData([]);
                         }
-                        
-                        // Update Watchlist price
-                        const wItem = watchList.value.find(w => w.symbol === symbol);
-                        if(wItem) wItem.price = currentPrice.value.toFixed(2);
-
-                        // Fetch smart analysis
-                        fetchPositionSizing(symbol);
-                        
-                        // Fetch Details (L1, Correlation)
-                        fetchStockDetails(symbol);
-
-                    } catch (e) {
-                        console.error("Fetch error", e);
-                        addLog(`数据获取失败: ${e.message}`);
-                    }
-                };
-
-                const fetchStockDetails = async (symbol) => {
-                    try {
-                        const res = await fetch(`/api/stock/details/${symbol}`);
-                        if (res.ok) {
-                            stockDetails.value = await res.json();
-                        }
-                    } catch (e) {
-                         console.error("Details fetch error", e);
+                        fetchIntelligentAnalysisData();
+                        fetchRealtimeQuote();
+                    } catch (error) {
+                        console.error('Error fetching market data:', error);
                     }
                 };
                 
-                const setTimeframe = (tf) => {
-                    timeframe.value = tf;
-                    fetchData(currentSymbol.value);
-                };
+                const fetchRealtimeQuote = async () => {
+                    if (!currentSymbol.value) return;
+                    try {
+                        const response = await fetch(`/api/realtime_quote/${currentSymbol.value}`);
+                        if (!response.ok) return;
+                        const data = await response.json();
+                        stockDetails.value = { ...stockDetails.value, ...data };
 
-                const generateData = () => {
-                    const data = [];
-                    let time = new Date("2023-01-01").getTime() / 1000;
-                    let value = 15;
-                    for (let i = 0; i < 100; i++) {
-                        const open = value;
-                        const close = value + (Math.random() - 0.5) * 2;
-                        const high = Math.max(open, close) + Math.random();
-                        const low = Math.min(open, close) - Math.random();
-                        data.push({ time: time + i * 86400, open, high, low, close });
-                        value = close;
+                        if (candleSeries.value && data.current_price && data.kline_data_point) {
+                            candleSeries.value.update(data.kline_data_point);
+                        }
+                    } catch (error) {
+                        console.error('Error fetching real-time quote:', error);
                     }
-                    return data;
                 };
 
-                const scrollTo = (id) => {
-                    document.getElementById(id).scrollIntoView({ behavior: 'smooth' });
+                const changeSymbol = () => {
+                    currentSymbol.value = searchSymbol.value.trim();
+                    fetchData();
                 };
 
-                const startStrategy = async () => {
-                    if (isRunning.value) {
-                        isRunning.value = false;
-                        updateGridLines(); // Clear lines
-                        addLog('策略已停止');
-                        return;
+                const changeInterval = (interval) => {
+                    selectedInterval.value = interval;
+                    fetchData();
+                };
+                
+                const cleanupChart = () => {
+                    if (realtimeQuoteInterval) clearInterval(realtimeQuoteInterval);
+                    if (chart.value) {
+                        chart.value.remove();
+                        chart.value = null;
                     }
+                };
+
+                // --- Intelligence Hub State & Logic ---
+                const intelligenceExpanded = ref(true);
+                const isFetchingIntelligentAnalysis = ref(false);
+                const intelligentAnalysis = ref({ logic: '', emotion: '', score: 0 });
+
+                const pulseWidth = computed(() => {
+                    if (!intelligentAnalysis.value || typeof intelligentAnalysis.value.score !== 'number') return '50%';
+                    const score = Math.max(-1, Math.min(1, intelligentAnalysis.value.score));
+                    const percentage = (score + 1) / 2 * 100;
+                    return `${percentage}%`;
+                });
+
+                const fetchIntelligentAnalysisData = async () => {
+                    if (!currentSymbol.value) return;
+                    isFetchingIntelligentAnalysis.value = true;
+                    try {
+                        const response = await fetch(`/api/intelligence_analysis/${currentSymbol.value}`);
+                        if (!response.ok) throw new Error('Failed to fetch intelligent analysis');
+                        intelligentAnalysis.value = await response.json();
+                    } catch (error) {
+                        console.error("Error fetching intelligent analysis:", error);
+                        intelligentAnalysis.value = { logic: '加载失败', emotion: '加载失败', score: 0 };
+                    } finally {
+                        isFetchingIntelligentAnalysis.value = false;
+                    }
+                };
+
+                // --- Backtesting State & Logic ---
+                const backtestSymbol = ref('000300.SH');
+                const startDate = ref('2022-01-01');
+                const endDate = ref(new Date().toISOString().split('T')[0]);
+                const initialCapital = ref(100000);
+                const strategy = ref('每月第一个交易日定投1000元');
+                const isFetchingBacktest = ref(false);
+                const backtestResult = ref({});
+
+                const runBacktest = async () => {
+                    isFetchingBacktest.value = true;
+                    backtestResult.value = {};
+                    // Clear previous chart
+                    const chartContainer = document.getElementById('backtest-chart-container');
+                    chartContainer.innerHTML = '<div v-if="isFetchingBacktest" style="text-align: center; padding-top: 50px;">正在生成回测净值曲线...</div>';
 
                     try {
-                        const response = await fetch('/api/strategy/start', {
+                        const response = await fetch('/api/backtest', {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({
-                                symbol: currentSymbol.value,
-                                upper: parseFloat(gridUpper.value),
-                                lower: parseFloat(gridLower.value),
-                                uid: wxUid.value || 'test_user'
-                            })
+                                symbol: backtestSymbol.value,
+                                start_date: startDate.value,
+                                end_date: endDate.value,
+                                initial_capital: initialCapital.value,
+                                strategy: strategy.value,
+                            }),
                         });
-                        
-                        const result = await response.json();
-                        if (result.status === 'success') {
-                            isRunning.value = true;
-                            addLog(`策略已启动 (ID: ${result.strategy_id})`);
-                            updateGridLines(); // Draw lines
-                            confetti({ particleCount: 100, spread: 70, origin: { y: 0.6 } });
-                        }
+                        if (!response.ok) throw new Error('Backtest failed');
+                        const data = await response.json();
+                        backtestResult.value = data.metrics;
+                        nextTick(() => {
+                            renderBacktestChart(data.equity_curve);
+                        });
                     } catch (error) {
-                        addLog(`启动错误: ${error.message}`);
+                        console.error('Error running backtest:', error);
+                        chartContainer.innerHTML = '<p style="color: red; text-align: center; padding-top: 50px;">回测失败，请检查参数或查看控制台日志。</p>';
+                    } finally {
+                        isFetchingBacktest.value = false;
                     }
                 };
-                
-                // Polling for status
-                const pollStatus = async () => {
-                    if(!isRunning.value) return;
-                    try {
-                        const res = await fetch('/api/strategies');
-                        const strategies = await res.json();
-                        // Find current strategy
-                        const myStrategy = strategies.find(s => s.symbol === currentSymbol.value);
-                        if(myStrategy) {
-                             // Update price from strategy engine if available
-                             if(myStrategy.current_price) {
-                                 lastPrice.value = currentPrice.value;
-                                 currentPrice.value = myStrategy.current_price;
-                             }
-                        }
-                    } catch(e) { console.error("Poll error", e); }
+
+                const renderBacktestChart = (equityCurve) => {
+                    const chartContainer = document.getElementById('backtest-chart-container');
+                    if (!chartContainer || !equityCurve) return;
+                    
+                    const dates = equityCurve.map(d => d.date);
+                    const strategyEquity = equityCurve.map(d => d.strategy);
+                    const benchmarkEquity = equityCurve.map(d => d.benchmark);
+
+                    const trace1 = {
+                        x: dates,
+                        y: strategyEquity,
+                        mode: 'lines',
+                        name: '策略净值',
+                        line: { color: 'var(--accent-color)', width: 2 }
+                    };
+
+                    const trace2 = {
+                        x: dates,
+                        y: benchmarkEquity,
+                        mode: 'lines',
+                        name: '基准净值',
+                        line: { color: '#cccccc', width: 1, dash: 'dash' }
+                    };
+
+                    const layout = {
+                        title: '净值曲线',
+                        xaxis: { title: '日期' },
+                        yaxis: { title: '净值' },
+                        margin: { t: 40, l: 60, r: 20, b: 50 },
+                        paper_bgcolor: 'var(--content-bg)',
+                        plot_bgcolor: 'var(--content-bg)',
+                        font: { color: 'var(--text-color)' },
+                        legend: { x: 0.05, y: 0.95 }
+                    };
+
+                    Plotly.newPlot(chartContainer, [trace1, trace2], layout, {responsive: true});
                 };
 
-                const saveSettings = () => {
-                    alert('设置已保存 (本地演示)');
-                    addLog(`微信推送UID已更新: ${wxUid.value}`);
+                const formatMetric = (value, unit = '') => {
+                    if (typeof value !== 'number') return 'N/A';
+                    return `${value.toFixed(2)}${unit}`;
                 };
 
+                const getMetricClass = (value) => {
+                    if (typeof value !== 'number') return '';
+                    return value >= 0 ? 'up' : 'down';
+                };
+
+                // --- Lifecycle Hooks ---
                 onMounted(() => {
-                    console.log("QuantMonitor v2.2 - Report & News");
-                    initChart();
-                    fetchMarketSentiment();
-                    fetchSectorMovers();
-                    fetchNews(); // Initial fetch
-                    setInterval(fetchNews, 1800000); // Poll news every 30 mins
-                    
-                    window.addEventListener('resize', () => {
-                        if (chart.value && chartContainer.value) {
-                            chart.value.applyOptions({ width: chartContainer.value.clientWidth, height: chartContainer.value.clientHeight });
-                        }
-                    });
-                    
-                    // Start polling
-                    pollInterval = setInterval(pollStatus, 5000);
+                    if (currentView.value === 'marketAnalysis') {
+                        fetchData();
+                        realtimeQuoteInterval = setInterval(fetchRealtimeQuote, 5000);
+                    }
                 });
-                
+
                 onUnmounted(() => {
-                    if(pollInterval) clearInterval(pollInterval);
+                    cleanupChart();
+                });
+
+                watch(currentView, (newView, oldView) => {
+                    if (oldView === 'marketAnalysis') {
+                        cleanupChart();
+                    }
+                    if (newView === 'marketAnalysis') {
+                        nextTick(() => {
+                            fetchData();
+                            realtimeQuoteInterval = setInterval(fetchRealtimeQuote, 5000);
+                        });
+                    }
                 });
 
                 return {
-                    chartContainer, fetchData, currentSymbol, currentPrice, lastPrice,
-                    gridUpper, gridLower, isRunning, logs, wxUid, 
-                    scrollTo, startStrategy, saveSettings, syncStrategies,
-                    watchList, account, gridProgress, marketSentiment, positionSuggestion, sectorMovers,
-                    marketType, searchInput, handleSearch, toggleWatchlist, isInWatchlist,
-                    stockDetails, timeframe, setTimeframe,
-                    gridBenchmark, gridRatio, updateGridFromRatio, applyAtrSuggestion,
-                    calcPrice, calcRate, maxShares, commission,
-                    generateReport, newsItems
+                    // App state
+                    currentView,
+                    menuItems,
+                    currentViewName,
+                    changeView,
+                    // Market Analysis
+                    searchSymbol,
+                    stockDetails,
+                    selectedInterval,
+                    priceChangePercent,
+                    changeSymbol,
+                    changeInterval,
+                    // Intelligence
+                    intelligenceExpanded,
+                    isFetchingIntelligentAnalysis,
+                    intelligentAnalysis,
+                    pulseWidth,
+                    // Backtesting
+                    backtestSymbol,
+                    startDate,
+                    endDate,
+                    initialCapital,
+                    strategy,
+                    isFetchingBacktest,
+                    backtestResult,
+                    runBacktest,
+                    formatMetric,
+                    getMetricClass,
                 };
             }
         }).mount('#app');

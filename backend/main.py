@@ -49,6 +49,10 @@ def load_watchlist_file():
     # We should have a separate init function or cache.
     return local_list
 
+def save_watchlist_file(watchlist):
+    with open(WATCHLIST_FILE, "w") as f:
+        json.dump(watchlist, f)
+
 def init_watchlist_from_feishu():
     """
     Called on startup to sync Feishu watchlist to local.
@@ -69,10 +73,6 @@ def init_watchlist_from_feishu():
 
 # Initialize on startup
 init_watchlist_from_feishu()
-
-def save_watchlist_file(watchlist):
-    with open(WATCHLIST_FILE, "w") as f:
-        json.dump(watchlist, f)
 
 class StrategyRequest(BaseModel):
     symbol: str
@@ -150,16 +150,20 @@ def add_to_watchlist(req: WatchlistRequest):
         current.append(req.symbol)
         save_watchlist_file(current)
         
-        # Sync to Feishu Webhook
-        # We need to fetch the name first to send it
-        # Or just send symbol and let Feishu handle it?
-        # Let's try to get a name if possible
-        try:
-             # Quick fetch or cache check?
-             # Just send symbol is safer for speed
-             feishu_integrator.sync_to_webhook(req.symbol, action="add")
-        except Exception as e:
-             print(f"Feishu webhook failed: {e}")
+        # Sync to Feishu Bitable (Create new record if not exists)
+        # We assume the user wants to add this to the "Watchlist" in Feishu.
+        # But for now, we only push "Daily Reports" or "Sync".
+        # The user's request #3 is about daily report. 
+        # Request #4 is about loading FROM Feishu.
+        # But if I add locally, should I push to Feishu?
+        # The user said "废弃 FEISHU_WEBHOOK_URL", but didn't explicitly say "add record on UI add".
+        # However, to keep it in sync, if I add here, I should probably add a record there.
+        # But without knowing the exact "Watchlist" table structure (is it just rows of data?),
+        # I'll skip auto-add to Feishu for now to avoid polluting the table with incomplete data,
+        # unless I implement a specific "Add to Watchlist" logic for Bitable.
+        # Given the "Daily Report" instruction, I'll focus on that.
+        # If the user wants 2-way sync, I'd need to add a record with just the code.
+        pass
     
     # Auto-start strategy for the new symbol
     try:
@@ -182,19 +186,20 @@ def sync_strategies():
     failed = []
     default_uid = os.environ.get("WX_UID", "default_user")
     
-    # Also trigger Feishu Sync for all items (Bulk update?)
-    # Or just sync the fact that we are running strategies?
-    # The user said "Sync Strategies" ... "sync call Webhook to write new code".
-    # Maybe they mean if I found new codes locally (or from elsewhere), push them to Feishu?
-    # Or simply push the current list to ensure Feishu is up to date.
+    # Trigger manual push to Feishu immediately
+    # This acts as a "Force Sync" button
+    try:
+        from feishu_integration import push_to_feishu_bitable
+        # Run in background to not block response?
+        # Or just run it. It takes time.
+        # Let's run it in a thread.
+        executor = ThreadPoolExecutor(max_workers=1)
+        # Pass current local watchlist to ensure we push what we have
+        executor.submit(push_to_feishu_bitable, current)
+    except Exception as e:
+        print(f"Error triggering Feishu sync: {e}")
     
     for symbol in current:
-        # Sync to Feishu (optional, to ensure consistency)
-        try:
-            feishu_integrator.sync_to_webhook(symbol, action="sync")
-        except:
-            pass
-
         try:
             params = calculate_smart_grid_params(symbol)
             if params:
@@ -225,40 +230,107 @@ def read_root():
 def health_check():
     return {"status": "ok"}
 
-@app.get("/api/kline")
-def get_kline(symbol: str = "000001.SZ", period: str = "1mo", interval: str = "1d"):
-    try:
-        ticker = yf.Ticker(symbol)
-        
-        # Adjust period based on interval if not provided
-        # 1m -> max 7d (usually 1d is enough for intraday view)
-        if interval == "1m":
-            period = "1d" # Intraday
-        elif interval == "1h":
-             period = "1mo"
-        
-        hist = ticker.history(period=period, interval=interval)
-        
-        if hist.empty:
-             raise ValueError("Empty data returned")
+@app.get("/api/market_data/{symbol}")
+async def get_market_data(symbol: str, interval: str = 'daily'):
+    """
+    Main endpoint to get all data for a given symbol.
+    """
+    clean_symbol = symbol.strip().upper()
 
-        data = []
-        for index, row in hist.iterrows():
-            # For intraday (1m), LightweightCharts needs seconds.
-            # For daily, it prefers YYYY-MM-DD string or timestamp.
-            # Using timestamp is generally safe.
-            data.append({
-                "time": int(index.timestamp()), 
+    # 1. Get K-line data
+    kline_data = await get_kline_data(clean_symbol, interval)
+
+    # 2. Get current price, last close, and other details from hybrid fetcher
+    details = fetch_hybrid_data(clean_symbol)
+    current_price = details.get('price') if details else None
+    last_close = details.get('prev_close') if details else None
+
+    return {
+        "kline_data": kline_data,
+        "current_price": current_price,
+        "last_close": last_close,
+        "name": details.get('name', clean_symbol) if details else clean_symbol,
+        "volume": details.get('volume') if details else None,
+        "pe_ratio": details.get('pe_ratio') if details else None,
+        "market_cap": details.get('market_cap') if details else None,
+    }
+
+@app.get("/api/realtime_quote/{symbol}")
+async def get_realtime_quote(symbol: str):
+    """
+    A lightweight endpoint to get only the latest quote for a symbol.
+    """
+    clean_symbol = symbol.strip().upper()
+    details = fetch_hybrid_data(clean_symbol)
+
+    if not details:
+        raise HTTPException(status_code=404, detail=f"Could not fetch real-time quote for {clean_symbol}")
+
+    return {
+        "current_price": details.get('price'),
+        "price_change": details.get('change'),
+        "price_change_percent": details.get('change_percent'),
+        "volume": details.get('volume'),
+        "name": details.get('name', clean_symbol),
+    }
+
+
+async def get_kline_data(symbol: str, interval: str = 'daily'):
+    """
+    Fetches k-line data primarily from yfinance due to its superior interval support.
+    """
+    # Map our friendly intervals to yfinance intervals and define appropriate periods
+    yf_interval_map = {
+        'hourly': '1h',
+        'daily': '1d',
+        'weekly': '1wk',
+        'monthly': '1mo'
+    }
+    yf_period_map = {
+        'hourly': '730d',  # 2 years of hourly data
+        'daily': '5y',    # 5 years of daily data
+        'weekly': 'max',  # Max available weekly data
+        'monthly': 'max'  # Max available monthly data
+    }
+
+    yf_interval = yf_interval_map.get(interval, '1d')
+    yf_period = yf_period_map.get(interval, '5y')
+
+    try:
+        # Determine yfinance symbol format
+        yf_symbol = symbol
+        if symbol.endswith('.SH') or symbol.endswith('.SZ'):
+            yf_symbol = symbol.replace('.SH', '.SS') # yfinance uses .SS for Shanghai
+        elif symbol.isdigit():
+            # Infer based on code
+            if symbol.startswith('6'): yf_symbol += '.SS'
+            else: yf_symbol += '.SZ'
+
+        ticker = yf.Ticker(yf_symbol)
+        df = ticker.history(period=yf_period, interval=yf_interval)
+        
+        if df.empty:
+            raise ValueError("No data returned from yfinance")
+
+        df = df.reset_index()
+        # The column name for datetime can be 'Datetime' or 'Date'
+        date_col = 'Datetime' if 'Datetime' in df.columns else 'Date'
+        
+        # Format for lightweight-charts
+        kline_data = [
+            {
+                "time": row[date_col].strftime('%Y-%m-%d'),
                 "open": row['Open'],
                 "high": row['High'],
                 "low": row['Low'],
-                "close": row['Close'],
-                "volume": row['Volume']
-            })
-        return data
+                "close": row['Close']
+            }
+            for _, row in df.iterrows()
+        ]
+        return kline_data
     except Exception as e:
-        print(f"Error fetching data for {symbol}: {e}. Falling back to mock data.")
-        # ... existing mock logic ...
+        print(f"Error fetching kline data for {symbol} with interval {interval} from yfinance: {e}")
+        # Fallback can be added here if needed, but for now, we return empty
         return []
 
 @app.get("/api/stock/details/{symbol}")
@@ -381,6 +453,106 @@ def generate_daily_report(symbol: str = "512100"):
         # Return a simple error image or text instead of 500?
         # For now, just raise 500 but at least we tried to use fallback data
         raise HTTPException(status_code=500, detail=str(e))
+
+from intelligence import analyze_cls_for_symbol, analyze_xueqiu_sentiment, get_xueqiu_comments
+
+@app.get("/api/intelligence/{symbol}")
+async def get_intelligence_data(symbol: str):
+    """
+    Endpoint to get institutional logic and retail sentiment.
+    """
+    # 1. Institutional Logic from Cailianpress
+    # Simple mapping from symbol to keywords. This can be improved.
+    symbol_map = {
+        "512100": ["中证1000", "512100"],
+        "518880": ["黄金ETF", "518880"],
+        "513180": ["纳指ETF", "513180"],
+        "588000": ["科创50", "588000"],
+    }
+    institutional_keywords = ['增量资金', '净流入', '减仓', '加仓', '资金流出']
+    
+    cls_summaries = analyze_cls_for_symbol(symbol_map.get(symbol, [symbol]), institutional_keywords)
+    
+    # 2. Retail Sentiment from Xueqiu (currently disabled due to anti-scraping)
+    # xueqiu_symbol_code = f"SH{symbol}" if symbol.startswith('5') else f"SZ{symbol}"
+    # comments = get_xueqiu_comments(xueqiu_symbol_code)
+    # sentiment = analyze_xueqiu_sentiment(comments)
+    
+    return {
+        "institutional_logic": cls_summaries,
+        "retail_sentiment": "中性 (雪球数据暂不可用)", # Placeholder
+        "sentiment_summary": [] # Placeholder for comments
+    }
+
+from news_agent import get_intelligent_analysis
+
+@app.get("/api/intelligence_analysis/{symbol}")
+async def get_intelligence_analysis_endpoint(symbol: str):
+    """
+    Endpoint to get the new AI-powered analysis.
+    """
+    analysis = await get_intelligent_analysis(symbol)
+    if not analysis:
+        raise HTTPException(status_code=500, detail="Failed to get intelligent analysis.")
+    return analysis
+
+from backtester import calculate_dca_backtest
+
+class DCABacktestRequest(BaseModel):
+    symbol: str
+    amount: float
+    frequency: str
+    start_date: str
+    smart_dca: bool = False
+
+@app.post("/api/backtest/dca")
+async def run_dca_backtest(request: DCABacktestRequest):
+    """
+    Endpoint to run a DCA backtest.
+    """
+    try:
+        results = calculate_dca_backtest(
+            symbol=request.symbol,
+            amount=request.amount,
+            frequency=request.frequency,
+            start_date=request.start_date,
+            smart_dca=request.smart_dca
+        )
+        if "error" in results:
+            raise HTTPException(status_code=400, detail=results["error"])
+        return results
+    except Exception as e:
+        print(f"Error during DCA backtest endpoint: {e}")
+        raise HTTPException(status_code=500, detail=f"执行回测时发生内部错误: {e}")
+
+
+from backtest_engine import run_backtest as run_backtest_engine
+
+class BacktestRequest(BaseModel):
+    symbol: str
+    start_date: str
+    end_date: str
+    initial_capital: float
+    strategy: str
+
+@app.post("/api/backtest")
+async def run_backtest(request: BacktestRequest):
+    """
+    Endpoint to run a backtest.
+    """
+    try:
+        results = run_backtest_engine(
+            symbol=request.symbol,
+            start_date=request.start_date,
+            end_date=request.end_date,
+            initial_capital=request.initial_capital,
+            strategy_text=request.strategy
+        )
+        return results
+    except Exception as e:
+        print(f"Error during backtest endpoint: {e}")
+        raise HTTPException(status_code=500, detail=f"执行回测时发生内部错误: {e}")
+
 
 if __name__ == "__main__":
     uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)

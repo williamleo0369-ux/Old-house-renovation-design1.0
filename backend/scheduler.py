@@ -3,6 +3,7 @@ from quant_engine import GridStrategy
 import logging
 from feishu_integration import push_to_feishu_bitable
 
+
 logger = logging.getLogger(__name__)
 
 scheduler = BackgroundScheduler()

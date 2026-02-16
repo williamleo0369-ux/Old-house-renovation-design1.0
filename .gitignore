@@ -1,17 +1,16 @@
-# Ignore Python build/runtime files
+# Archives
+*.zip
+*.tar
+*.gz
+*.rar
+
+# Cache
+.yf_cache/
 __pycache__/
 *.pyc
 *.pyo
-*.pyd
-.Python
-env/
-venv/
-.env
-.venv/
 
-# Ignore system files
+# IDE / OS specific
+.idea/
+.vscode/
 .DS_Store
-Thumbs.db
-
-# Ignore user data
-watchlist.json
