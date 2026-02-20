@@ -1,3 +1,7 @@
+import sys
+
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'backend'))
+
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -32,7 +36,7 @@ CACHE_DURATION = 30  # seconds
 start_scheduler()
 
 # Watchlist Management
-WATCHLIST_FILE = "watchlist.json"
+WATCHLIST_FILE = os.path.join("backend", "watchlist.json")
 
 def load_watchlist_file():
     # Priority: Local file -> Feishu
@@ -174,13 +178,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-@app.get("/")
-async def read_root():
-    return FileResponse(os.path.join(STATIC_DIR, 'index.html'))
-
-# Mount static files
-STATIC_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
-app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+app.mount("/", StaticFiles(directory="frontend/dist", html=True), name="static")
 
 def fetch_stock_data(sym):
     # Use the new hybrid fetcher

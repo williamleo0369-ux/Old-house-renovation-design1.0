@@ -1,8 +1,10 @@
 services:
   - type: web
     name: quant-monitor
-    env: python
-    region: singapore
+    env: node
     plan: free
-    buildCommand: cd backend && pip install -r requirements.txt
-    startCommand: cd backend && uvicorn main:app --host 0.0.0.0 --port $PORT
+    buildCommand: |
+      pip install -r requirements.txt
+      npm install
+      npm run build
+    startCommand: node server.cjs
