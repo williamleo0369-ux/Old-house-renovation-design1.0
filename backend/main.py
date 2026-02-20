@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
+from typing import List, Optional
 import uvicorn
 import os
 import json
@@ -15,6 +16,7 @@ from quant_engine import calculate_smart_grid_params, MarketSentiment, PositionS
 from market_data import fetch_hybrid_data, calculate_atr, fetch_market_news
 from report_generator import generate_report_image
 from feishu_integration import feishu_integrator
+from stock_screener import screener
 from fastapi.responses import Response
 
 app = FastAPI(title="Quant Analysis API")
@@ -83,6 +85,87 @@ class StrategyRequest(BaseModel):
 class WatchlistRequest(BaseModel):
     symbol: str
 
+from nlp_parser import parse_nlp_query
+
+class NLPRequest(BaseModel):
+    query: str
+
+@app.post("/api/screen_stocks")
+def screen_stocks(request: ScreenerRequest):
+    try:
+        # 1. Get all stocks
+        all_stocks = screener.get_all_stocks()
+        if all_stocks.empty:
+            raise HTTPException(status_code=500, detail="Could not fetch stock list.")
+
+        # 2. Get fundamental data
+        fundamental_df = screener.get_fundamental_data(all_stocks)
+
+        # 3. Apply filters
+        filtered_df = fundamental_df.copy()
+
+        # --- Preset Rules ---
+        if request.preset == "low_pe_high_roe":
+            filtered_df = filtered_df[
+                (filtered_df['pe_ratio'] < 15) & (filtered_df['pe_ratio'] > 0) & # PE > 0 to exclude loss-making companies
+                (filtered_df['roe'] > 15)
+            ]
+        # Add more presets here as needed
+
+        # --- Custom Rules ---
+        if request.custom_rules:
+            for key, value in request.custom_rules.items():
+                if key == 'pe_ratio_max' and value is not None:
+                    filtered_df = filtered_df[filtered_df['pe_ratio'] <= value]
+                if key == 'pe_ratio_min' and value is not None:
+                    filtered_df = filtered_df[filtered_df['pe_ratio'] >= value]
+                if key == 'roe_min' and value is not None:
+                    filtered_df = filtered_df[filtered_df['roe'] >= value]
+                if key == 'market_cap_min' and value is not None:
+                    filtered_df = filtered_df[filtered_df['market_cap'] >= value * 1_0000_0000] # Convert from Yi
+                if key == 'market_cap_max' and value is not None:
+                    filtered_df = filtered_df[filtered_df['market_cap'] <= value * 1_0000_0000] # Convert from Yi
+        
+        # 4. (Optional) Calculate technical indicators for the pre-filtered stocks
+        if request.calculate_technicals:
+            if len(filtered_df) > 500:
+                # To prevent overwhelming the system, limit technical analysis to a reasonable number of stocks
+                filtered_df = filtered_df.head(500)
+            final_df = screener.calculate_technical_indicators(filtered_df)
+        else:
+            final_df = filtered_df
+
+        # 5. Convert to JSON and return
+        # Drop NaN values for cleaner JSON
+        final_df = final_df.dropna(subset=['pe_ratio', 'pb_ratio', 'roe', 'market_cap'])
+        result = final_df.to_dict(orient='records')
+        return result
+
+    except Exception as e:
+        # Log the exception for debugging
+        print(f"Error in screen_stocks: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"An error occurred during screening: {e}")
+
+@app.post("/api/screen_stocks_nlp")
+def screen_stocks_nlp(request: NLPRequest):
+    try:
+        # 1. Parse the NLP query to get rules
+        parsed_request = parse_nlp_query(request.query)
+        
+        # Create a ScreenerRequest object from the parsed rules
+        screener_req = ScreenerRequest(**parsed_request)
+
+        # 2. Reuse the existing screen_stocks logic
+        return screen_stocks(screener_req)
+
+    except Exception as e:
+        print(f"Error in screen_stocks_nlp: {e}")
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"An error occurred during NLP screening: {e}")
+
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],  # Allow all origins for development
@@ -91,8 +174,13 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+@app.get("/")
+async def read_root():
+    return FileResponse(os.path.join(STATIC_DIR, 'index.html'))
+
 # Mount static files
-app.mount("/static", StaticFiles(directory="static"), name="static")
+STATIC_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
+app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
 def fetch_stock_data(sym):
     # Use the new hybrid fetcher
@@ -553,6 +641,51 @@ async def run_backtest(request: BacktestRequest):
         print(f"Error during backtest endpoint: {e}")
         raise HTTPException(status_code=500, detail=f"执行回测时发生内部错误: {e}")
 
+# --- Portfolio Management Endpoints ---
+
+class PositionRequest(BaseModel):
+    股票代码: str
+    持仓数量: int
+    成本单价: float
+
+@app.get("/api/positions")
+async def get_positions():
+    """
+    Get all positions from Feishu Bitable.
+    """
+    try:
+        positions = feishu_integrator.get_positions()
+        return positions
+    except Exception as e:
+        print(f"Error getting positions: {e}")
+        raise HTTPException(status_code=500, detail="Failed to get positions from Feishu.")
+
+@app.post("/api/positions")
+async def add_position(request: PositionRequest):
+    """
+    Add a new position to Feishu Bitable.
+    """
+    try:
+        # The feishu_integration.add_position expects a dict
+        record_data = request.dict()
+        result = feishu_integrator.add_position(record_data)
+        return result
+    except Exception as e:
+        print(f"Error adding position: {e}")
+        raise HTTPException(status_code=500, detail="Failed to add position to Feishu.")
+
+@app.delete("/api/positions/{record_id}")
+async def delete_position(record_id: str):
+    """
+    Delete a position from Feishu Bitable by its record_id.
+    """
+    try:
+        result = feishu_integrator.delete_position(record_id)
+        return result
+    except Exception as e:
+        print(f"Error deleting position: {e}")
+        raise HTTPException(status_code=500, detail="Failed to delete position from Feishu.")
+
 
 if __name__ == "__main__":
-    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
+    uvicorn.run(app, host="0.0.0.0", port=8000)

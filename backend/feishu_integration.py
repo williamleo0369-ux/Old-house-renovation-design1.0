@@ -9,6 +9,8 @@ logger = logging.getLogger(__name__)
 # Default Configuration from User
 DEFAULT_APP_TOKEN = "IsL0w4WpDiYGhekvnKAcLEHJn9c"
 DEFAULT_TABLE_ID = "tblCmtkrbs2KxbqP"
+DEFAULT_PORTFOLIO_APP_TOKEN = "PYTbbiGEgaVqvNsNXmmcDhkPnhg"
+DEFAULT_PORTFOLIO_TABLE_ID = "tblAyqYazaUimRnc" # New table for positions
 DEFAULT_APP_ID = "cli_a9045d9277f8dcc1"
 DEFAULT_APP_SECRET = "KHpqxcUp7iyiugqxPHS0Tc0xC7ioXgsw"
 
@@ -18,6 +20,8 @@ class FeishuIntegrator:
         self.app_secret = os.environ.get("FEISHU_APP_SECRET", DEFAULT_APP_SECRET)
         self.app_token = os.environ.get("FEISHU_APP_TOKEN", DEFAULT_APP_TOKEN)
         self.table_id = os.environ.get("FEISHU_TABLE_ID", DEFAULT_TABLE_ID)
+        self.portfolio_app_token = os.environ.get("FEISHU_PORTFOLIO_APP_TOKEN", DEFAULT_PORTFOLIO_APP_TOKEN)
+        self.portfolio_table_id = os.environ.get("FEISHU_PORTFOLIO_TABLE_ID", DEFAULT_PORTFOLIO_TABLE_ID)
         
         self._tenant_access_token = None
         self._token_expire_time = 0
@@ -256,6 +260,103 @@ class FeishuIntegrator:
                 logger.error(f"Failed to update record {record_id} in Feishu: {data}")
         except Exception as e:
             logger.error(f"Error updating record {record_id} in Feishu: {e}")
+
+    def get_positions(self):
+        """
+        Read all records from the portfolio table.
+        """
+        token = self._get_tenant_access_token()
+        if not token:
+            return []
+
+        url = f"https://open.feishu.cn/open-apis/bitable/v1/apps/{self.portfolio_app_token}/tables/{self.portfolio_table_id}/records"
+        headers = {"Authorization": f"Bearer {token}"}
+        
+        positions = []
+        page_token = None
+        try:
+            while True:
+                params = {"page_size": 100}
+                if page_token:
+                    params["page_token"] = page_token
+
+                response = requests.get(url, headers=headers, params=params)
+                data = response.json()
+                
+                if data.get("code") != 0:
+                    logger.error(f"Error reading Feishu portfolio table: {data}")
+                    break
+                
+                items = data.get("data", {}).get("items", [])
+                for item in items:
+                    # Add record_id to the fields for future reference (e.g., deletion)
+                    positions.append(item)
+                
+                if not data.get("data", {}).get("has_more"):
+                    break
+                page_token = data.get("data", {}).get("page_token")
+                
+            logger.info(f"Loaded {len(positions)} positions from Feishu portfolio.")
+            return positions
+        except Exception as e:
+            logger.error(f"Exception loading portfolio from Feishu: {e}", exc_info=True)
+            return []
+
+    def add_position(self, record_data):
+        """
+        Add a single position record to the portfolio table.
+        record_data should be a dict like:
+        {"股票代码": "000001", "持仓数量": 100, "成本单价": 10.5}
+        """
+        token = self._get_tenant_access_token()
+        if not token:
+            return None
+
+        url = f"https://open.feishu.cn/open-apis/bitable/v1/apps/{self.portfolio_app_token}/tables/{self.portfolio_table_id}/records"
+        headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
+        payload = {"fields": record_data}
+        
+        try:
+            response = requests.post(url, headers=headers, json=payload)
+            data = response.json()
+            if data.get("code") == 0:
+                logger.info(f"Successfully added position: {record_data.get('股票代码')}")
+                new_record = data.get("data", {}).get("record")
+                if new_record:
+                    # The returned record from Feishu contains the fields we just added
+                    logger.info(f"Successfully added position: {new_record.get('fields', {}).get('股票代码')}")
+                    return new_record
+                return None
+            else:
+                logger.error(f"Failed to add position to Feishu: {data}")
+                return None
+        except Exception as e:
+            logger.error(f"Error adding position to Feishu: {e}", exc_info=True)
+            return None
+
+    def delete_position(self, record_id):
+        """
+        Delete a single record from the portfolio table.
+        """
+        token = self._get_tenant_access_token()
+        if not token:
+            return False
+
+        url = f"https://open.feishu.cn/open-apis/bitable/v1/apps/{self.portfolio_app_token}/tables/{self.portfolio_table_id}/records/{record_id}"
+        headers = {"Authorization": f"Bearer {token}"}
+        
+        try:
+            response = requests.delete(url, headers=headers)
+            data = response.json()
+            if data.get("code") == 0:
+                logger.info(f"Successfully deleted position record {record_id}.")
+                return True
+            else:
+                logger.error(f"Failed to delete position {record_id} from Feishu: {data}")
+                return False
+        except Exception as e:
+            logger.error(f"Error deleting position {record_id} from Feishu: {e}", exc_info=True)
+            return False
 
 # Global Instance
 feishu_integrator = FeishuIntegrator()
